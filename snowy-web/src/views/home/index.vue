@@ -110,13 +110,14 @@
 						:leak-point-list="leakPointList"
 						:level-key="responseLevel.key"
 						:color-map="poiColorMap"
+						:icon-map="poiIconMap"
 					/>
 				</div>
 
 				<div class="legend-shell glass-panel">
 					<div class="legend-block">
 						<h4>设施图例</h4>
-						<div class="legend-list">
+						<div class="legend-list legend-list--facility">
 							<div v-for="item in facilityLegend" :key="item.label" class="legend-item">
 								<component :is="item.icon" :style="{ color: item.color }" />
 								<span>{{ item.label }}</span>
@@ -126,13 +127,9 @@
 					<div class="legend-block legend-block--depth">
 						<h4>积水深度图例</h4>
 						<div class="legend-list">
-							<div class="legend-item">
-								<span class="legend-dot legend-dot--primary"></span>
-								<span>严重淹没区 ({{ primaryFloodDepth }})</span>
-							</div>
-							<div class="legend-item">
-								<span class="legend-dot legend-dot--secondary"></span>
-								<span>次级积水点 ({{ secondaryFloodDepth }})</span>
+							<div v-for="item in floodDepthLegend" :key="item.label" class="legend-item">
+								<span class="legend-dot" :style="item.dotStyle"></span>
+								<span>{{ item.label }}</span>
 							</div>
 						</div>
 					</div>
@@ -453,11 +450,48 @@
 			return result
 		}, {})
 	)
+	const poiIconMap = computed(() =>
+		Object.keys(poiMetaMap).reduce((result, key) => {
+			result[key] = poiMetaMap[key].icon
+			return result
+		}, {})
+	)
 
 	const facilityLegend = computed(() => [
 		{ label: '医疗机构', icon: MedicineBoxOutlined, color: poiMetaMap.医院.color },
 		{ label: '教育机构', icon: BankOutlined, color: poiMetaMap.学校.color },
-		{ label: '避险设施', icon: SafetyCertificateOutlined, color: poiMetaMap.避险点.color }
+		{ label: '避险设施', icon: SafetyCertificateOutlined, color: poiMetaMap.避险点.color },
+		{ label: '消防设施', icon: AlertOutlined, color: poiMetaMap.消防设施.color },
+		{ label: '电力设施', icon: ThunderboltOutlined, color: poiMetaMap.电力设施.color },
+		{ label: '交通枢纽', icon: CarOutlined, color: poiMetaMap.交通枢纽.color },
+		{ label: '排涝设施', icon: ControlOutlined, color: poiMetaMap.排涝设施.color },
+		{ label: '应急指挥', icon: AimOutlined, color: poiMetaMap.应急指挥.color }
+	])
+	const floodDepthLegend = computed(() => [
+		{
+			label: '轻度积水区 (<= 0.8m)',
+			dotStyle: {
+				background: 'rgba(16, 185, 129, 0.22)',
+				border: '1px solid #6ee7b7',
+				boxShadow: '0 0 8px rgba(16, 185, 129, 0.38)'
+			}
+		},
+		{
+			label: '中度积水区 (0.8m - 1.5m)',
+			dotStyle: {
+				background: 'rgba(56, 189, 248, 0.24)',
+				border: '1px solid #67e8f9',
+				boxShadow: '0 0 8px rgba(56, 189, 248, 0.45)'
+			}
+		},
+		{
+			label: '重度积水区 (> 1.5m)',
+			dotStyle: {
+				background: 'rgba(37, 99, 235, 0.28)',
+				border: '1px solid #60a5fa',
+				boxShadow: '0 0 8px rgba(37, 99, 235, 0.5)'
+			}
+		}
 	])
 
 	const facilityStats = computed(() => [
@@ -514,8 +548,6 @@
 	const topFacilityLabel = computed(
 		() => facilityStats.value.slice().sort((left, right) => right.count - left.count)[0]?.label || '关键设施'
 	)
-	const primaryFloodDepth = computed(() => `${Math.max(1.8, Math.min(4.8, Number(scenarioState.value.radiusMeters || 0) / 470)).toFixed(1)}m`)
-	const secondaryFloodDepth = computed(() => `${Math.max(0.9, Math.min(2.4, Number(scenarioState.value.radiusMeters || 0) / 930)).toFixed(1)}m`)
 
 	function createScenarioState() {
 		return {
@@ -1568,6 +1600,11 @@
 	.legend-list {
 		display: grid;
 		gap: 10px;
+	}
+
+	.legend-list--facility {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		column-gap: 18px;
 	}
 
 	.legend-item {

@@ -322,9 +322,17 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         String[] typeArray = {"医院", "学校", "避险点", "电力设施", "消防设施", "物资仓储", "社区服务", "交通枢纽", "排涝设施", "应急指挥"};
         List<EmergencyPoiResult> resultList = new ArrayList<>(MOCK_POI_TOTAL);
         for (int i = 0; i < districtArray.length; i++) {
+            int districtCol = i % 5;
+            int districtRow = i / 5;
+            double districtEastMeters = (districtCol - 2D) * 1650D + (i % 2 == 0 ? 180D : -180D);
+            double districtNorthMeters = (districtRow - 0.5D) * 1850D + ((i % 3) - 1) * 120D;
             for (int j = 0; j < facilityArray.length; j++) {
-                double eastMeters = (j - 4.5D) * 420D + (i % 2 == 0 ? 60D : -60D);
-                double northMeters = (i - 4.5D) * 360D + ((j % 3) - 1) * 55D;
+                int facilityCol = j % 5;
+                int facilityRow = j / 5;
+                double facilityEastMeters = (facilityCol - 2D) * 260D + (facilityRow == 0 ? -80D : 80D);
+                double facilityNorthMeters = (facilityRow - 0.5D) * 480D + (facilityCol % 2 == 0 ? 60D : -60D);
+                double eastMeters = districtEastMeters + facilityEastMeters;
+                double northMeters = districtNorthMeters + facilityNorthMeters;
                 EmergencyPoiResult emergencyPoiResult = new EmergencyPoiResult();
                 emergencyPoiResult.setId(String.format("poi-%03d", i * facilityArray.length + j + 1));
                 emergencyPoiResult.setName(districtArray[i] + facilityArray[j]);
