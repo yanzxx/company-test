@@ -30,7 +30,15 @@ const routes = [
 		meta: {
 			title: '三方登录'
 		}
-	}
+	},
+	{
+		path: '/home',
+		component: () => import('@/views/home/index.vue'),
+		meta: {
+			title: '大屏'
+		}
+	},
+
 ]
 
 export default routes
