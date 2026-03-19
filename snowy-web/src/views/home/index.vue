@@ -27,13 +27,36 @@
 					<span>刷新态势</span>
 				</button>
 				<div class="header-icons">
-					<!-- <div class="header-icon">
-						<BellOutlined />
+					<div
+						class="header-user-shell"
+						:title="userDisplayName"
+						@mouseenter="userMenuOpen = true"
+						@mouseleave="userMenuOpen = false"
+					>
+						<div class="header-user">
+							<a-avatar class="header-avatar" :src="userAvatar">
+								{{ userInitial }}
+							</a-avatar>
+						</div>
+						<div v-show="userMenuOpen" class="header-user-popover">
+							<div class="emergency-user-menu__profile">
+								<div class="emergency-user-menu__profile-main">
+									<a-avatar class="header-avatar emergency-user-menu__avatar" :src="userAvatar">
+										{{ userInitial }}
+									</a-avatar>
+									<div class="emergency-user-menu__text">
+										<strong>{{ userDisplayName }}</strong>
+										<span>{{ userMetaLine }}</span>
+									</div>
+								</div>
+							</div>
+							<div class="emergency-user-menu__divider"></div>
+							<button class="emergency-user-menu__logout" type="button" @click="handleLogout">
+								<ExportOutlined />
+								<span>退出登录</span>
+							</button>
+						</div>
 					</div>
-					<div class="header-icon">
-						<SettingOutlined />
-					</div> -->
-					<img class="header-avatar" :src="avatarImage" :title="userDisplayName" alt="值守员头像" />
 				</div>
 			</div>
 		</header>
@@ -311,33 +334,36 @@
 
 <script setup name="EmergencyHomeStitch">
 	import dayjs from 'dayjs'
-	import { message } from 'ant-design-vue'
+	import { message, Modal } from 'ant-design-vue'
     import AdaptBody from '@/components/AdaptBody/index.vue'
 	import {
 		AlertOutlined,
 		AimOutlined,
 		BankOutlined,
-		BellOutlined,
 		CarOutlined,
 		ClockCircleOutlined,
 		ControlOutlined,
 		EnvironmentOutlined,
+		ExclamationCircleOutlined,
+		ExportOutlined,
 		HistoryOutlined,
 		InboxOutlined,
 		MedicineBoxOutlined,
 		NotificationOutlined,
 		RobotOutlined,
 		SafetyCertificateOutlined,
-		SettingOutlined,
 		SyncOutlined,
 		TeamOutlined,
 		ThunderboltOutlined
 	} from '@ant-design/icons-vue'
-	import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+	import { storeToRefs } from 'pinia'
+	import { computed, createVNode, onBeforeUnmount, onMounted, ref } from 'vue'
 	import sysConfig from '@/config'
+	import loginApi from '@/api/auth/loginApi'
 	import emergencyDrillApi from '@/api/biz/emergencyDrillApi'
+	import router from '@/router'
+	import { useGlobalStore } from '@/store'
 	import tool from '@/utils/tool'
-	import avatarImage from '@/assets/images/emergency/stitch-avatar.png'
 	import mapBg from '@/assets/images/emergency/stitch-map-bg.png'
 
 	const DEFAULT_CENTER_LNG = 113.947321
@@ -402,10 +428,12 @@
 		应急指挥: { icon: AimOutlined, color: '#24f0cf', glow: '0 0 12px rgba(36, 240, 207, 0.35)' }
 	}
 
-	const userInfo = ref(tool.data.get('USER_INFO') || {})
+	const globalStore = useGlobalStore()
+	const { userInfo } = storeToRefs(globalStore)
 	const loading = ref(false)
 	const updating = ref(false)
 	const logDrawerOpen = ref(false)
+	const userMenuOpen = ref(false)
 	const streamMode = ref('connecting')
 	const streamHint = ref('正在连接实时推送')
 	const now = ref(dayjs())
@@ -420,6 +448,12 @@
 	let streamInstance = null
 
 	const userDisplayName = computed(() => userInfo.value?.name || userInfo.value?.userName || '应急值守员')
+	const userAvatar = computed(() => userInfo.value?.avatar || '')
+	const userInitial = computed(() => userDisplayName.value.slice(0, 1) || '守')
+	const userMetaLine = computed(() => {
+		const metaParts = [userInfo.value?.orgName, userInfo.value?.positionName].filter(Boolean)
+		return metaParts.join(' · ') || '当前值守人员'
+	})
 	const screenTime = computed(() => now.value.format('YYYY.MM.DD HH:mm:ss'))
 	const leakPointList = computed(() => (Array.isArray(scenarioState.value.leakPointList) ? scenarioState.value.leakPointList : []))
 	const latestSignal = computed(() => signalFeed.value[0] || scenarioState.value.latestSignal || null)
@@ -723,6 +757,42 @@
 
 	function formatCount(value) {
 		return `${Number(value || 0).toString().padStart(2, '0')}`
+	}
+
+	function clearLoginState() {
+		tool.data.remove('TOKEN')
+		tool.data.remove('USER_INFO')
+		tool.data.remove('MENU')
+		tool.data.remove('PERMISSIONS')
+		globalStore.setUserInfo({})
+	}
+
+	function handleLogout() {
+		userMenuOpen.value = false
+		Modal.confirm({
+			title: '提示',
+			content: '确认退出当前用户？',
+			icon: createVNode(ExclamationCircleOutlined),
+			maskClosable: false,
+			okText: '确定',
+			cancelText: '取消',
+			async onOk() {
+				const token = tool.data.get('TOKEN')
+				const closeMessage = message.loading('退出中...', 0)
+				try {
+					await loginApi.logout({ token })
+					clearLoginState()
+					await router.replace({ path: '/login' })
+				} catch (error) {
+					tool.data.clear()
+					globalStore.setUserInfo({})
+					await router.replace({ path: '/login' })
+					location.reload()
+				} finally {
+					closeMessage()
+				}
+			}
+		})
 	}
 
 	async function loadLogList(silent = false) {
@@ -1085,15 +1155,71 @@
 		border-left: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
-	.header-icon {
-		display: flex;
+	.header-user-shell {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.header-user {
+		position: relative;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border-radius: 8px;
-		color: rgba(214, 227, 255, 0.72);
-		background: rgba(255, 255, 255, 0.04);
+		width: 46px;
+		height: 46px;
+		padding: 4px;
+		border-radius: 16px;
+		border: 1px solid rgba(0, 163, 255, 0.18);
+		background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+		box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+		cursor: pointer;
+		transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.header-user::after {
+		content: '';
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+		width: 8px;
+		height: 8px;
+		border-radius: 999px;
+		border: 1px solid rgba(8, 22, 41, 0.92);
+		background: #00e471;
+		box-shadow: 0 0 12px rgba(0, 228, 113, 0.7);
+	}
+
+	.header-user:hover {
+		transform: translateY(-1px);
+		border-color: rgba(0, 228, 255, 0.48);
+		box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28), 0 0 18px rgba(0, 163, 255, 0.22);
+	}
+
+	.header-user-popover {
+		position: absolute;
+		top: calc(100% + 12px);
+		right: 0;
+		z-index: 30;
+		min-width: 232px;
+		padding: 10px;
+		border-radius: 18px;
+		border: 1px solid rgba(0, 163, 255, 0.22);
+		background: linear-gradient(180deg, rgba(10, 25, 47, 0.98), rgba(8, 22, 41, 0.94));
+		box-shadow: 0 22px 48px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	}
+
+	.header-user-popover::before {
+		content: '';
+		position: absolute;
+		top: -7px;
+		right: 18px;
+		width: 12px;
+		height: 12px;
+		transform: rotate(45deg);
+		border-top: 1px solid rgba(0, 163, 255, 0.22);
+		border-left: 1px solid rgba(0, 163, 255, 0.22);
+		background: rgba(10, 25, 47, 0.98);
 	}
 
 	.header-avatar {
@@ -1101,7 +1227,89 @@
 		height: 36px;
 		border-radius: 12px;
 		border: 1px solid rgba(0, 163, 255, 0.24);
+		background: radial-gradient(circle at 30% 20%, rgba(0, 228, 255, 0.7), rgba(0, 163, 255, 0.18) 55%, rgba(8, 22, 41, 0.98));
+		color: #eff8ff;
+		font-family: 'Space Grotesk', 'Microsoft YaHei', sans-serif;
+		font-size: 14px;
+		font-weight: 700;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+	}
+
+	:deep(.header-avatar img) {
 		object-fit: cover;
+	}
+
+	.emergency-user-menu__profile {
+		padding: 6px 8px 10px;
+	}
+
+	.emergency-user-menu__profile-main {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.emergency-user-menu__avatar {
+		width: 44px;
+		height: 44px;
+		border-radius: 14px;
+	}
+
+	.emergency-user-menu__text {
+		min-width: 0;
+	}
+
+	.emergency-user-menu__text strong {
+		display: block;
+		font-size: 15px;
+		font-weight: 700;
+		color: #ffffff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.emergency-user-menu__text span {
+		display: block;
+		margin-top: 4px;
+		font-size: 12px;
+		letter-spacing: 0.04em;
+		color: rgba(214, 227, 255, 0.7);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.emergency-user-menu__divider {
+		height: 1px;
+		margin: 6px 0;
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.emergency-user-menu__logout {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		padding: 10px 12px;
+		border: none;
+		border-radius: 12px;
+		background: transparent;
+		color: var(--text-main);
+		font-size: 13px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		cursor: pointer;
+		transition: background 0.2s ease, color 0.2s ease;
+	}
+
+	.emergency-user-menu__logout:hover {
+		background: rgba(0, 163, 255, 0.14);
+		color: #ffffff;
+	}
+
+	.emergency-user-menu__logout .anticon {
+		font-size: 14px;
 	}
 
 	.page-main {
