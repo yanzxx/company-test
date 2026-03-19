@@ -19,19 +19,6 @@
 			<GeojsonLayer id="emergency-center-glow" source-id="emergency-center-point" map-type="circle" :paint="centerGlowPaint" />
 			<GeojsonLayer id="emergency-center-core" source-id="emergency-center-point" map-type="circle" :paint="centerCorePaint" />
 
-			<Source id="emergency-poi-points" :geojson="poiGeojson" />
-			<GeojsonLayer
-				id="emergency-poi-glow"
-				source-id="emergency-poi-points"
-				map-type="circle"
-				:filter="['==', ['get', 'isAffected'], true]"
-				:paint="poiGlowPaint"
-			/>
-			<GeojsonLayer id="emergency-poi-core" source-id="emergency-poi-points" map-type="circle" :paint="poiCirclePaint" />
-
-			<Source id="emergency-poi-labels" :geojson="poiLabelGeojson" />
-			<SymbolLayer id="emergency-poi-name" source-id="emergency-poi-labels" :layout="poiLabelLayout" :paint="poiLabelPaint" />
-
 			<Marker marker-id="emergency-center-marker" :coordinate="centerCoordinate" :offset="[0, 0]">
 				<div class="center-marker">
 					<div class="center-marker__core"></div>
@@ -89,7 +76,6 @@
 	import RasterLayer from '@/components/BaseMap/MapLayers/RasterLayer.vue'
 	import GeojsonLayer from '@/components/BaseMap/MapLayers/GeojsonLayer.vue'
 	import Marker from '@/components/BaseMap/MapLayers/Marker.vue'
-	import SymbolLayer from '@/components/BaseMap/MapLayers/SymbolLayer.vue'
 	import Source from '@/components/BaseMap/MapSources/Source.vue'
 
 	const DEFAULT_CENTER = [113.947321, 22.543211]
@@ -247,42 +233,16 @@
 		'line-opacity': 0.92
 	}
 	const centerGlowPaint = {
-		'circle-color': '#28d7ff',
-		'circle-radius': 12,
-		'circle-blur': 0.75,
-		'circle-opacity': 0.46
+		'circle-color': '#ef4444',
+		'circle-radius': 16,
+		'circle-blur': 0.82,
+		'circle-opacity': 0.58
 	}
 	const centerCorePaint = {
-		'circle-color': '#e8fbff',
-		'circle-radius': 4,
-		'circle-stroke-color': '#28d7ff',
-		'circle-stroke-width': 2
-	}
-	const poiGlowPaint = {
-		'circle-color': ['coalesce', ['get', 'color'], FALLBACK_COLOR],
-		'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 7, 14, 15],
-		'circle-opacity': 0.18,
-		'circle-blur': 0.8
-	}
-	const poiCirclePaint = {
-		'circle-color': ['case', ['boolean', ['get', 'isAffected'], false], ['coalesce', ['get', 'color'], FALLBACK_COLOR], '#4f607d'],
-		'circle-radius': ['case', ['boolean', ['get', 'isAffected'], false], ['interpolate', ['linear'], ['zoom'], 9, 4.5, 14, 8.5], ['interpolate', ['linear'], ['zoom'], 9, 2, 14, 4.5]],
-		'circle-opacity': ['case', ['boolean', ['get', 'isAffected'], false], 0.95, 0.35],
-		'circle-stroke-color': ['case', ['boolean', ['get', 'isAffected'], false], '#eefcff', 'rgba(173, 197, 255, 0.16)'],
-		'circle-stroke-width': ['case', ['boolean', ['get', 'isAffected'], false], 1.6, 0.8]
-	}
-	const poiLabelLayout = {
-		'text-field': ['get', 'name'],
-		'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 13],
-		'text-offset': [0, 1.25],
-		'text-anchor': 'top',
-		'text-allow-overlap': false,
-		'text-ignore-placement': false
-	}
-	const poiLabelPaint = {
-		'text-color': '#e8f7ff',
-		'text-halo-color': 'rgba(4, 16, 32, 0.92)',
-		'text-halo-width': 1.2
+		'circle-color': '#fff1f2',
+		'circle-radius': 5,
+		'circle-stroke-color': '#ef4444',
+		'circle-stroke-width': 2.6
 	}
 	const mapBbox = computed(() => {
 		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.55, 280, 900)
@@ -381,44 +341,6 @@
 		])
 	)
 
-	const poiGeojson = computed(() =>
-		createFeatureCollection(
-			props.poiList
-				.filter((item) => isValidCoordinate(item.lng, item.lat))
-				.map((item) => ({
-					type: 'Feature',
-					properties: {
-						id: item.id,
-						name: item.name,
-						type: item.type,
-						color: props.colorMap[item.type] || FALLBACK_COLOR,
-						isAffected: affectedPoiIdSet.value.has(item.id)
-					},
-					geometry: {
-						type: 'Point',
-						coordinates: [Number(item.lng), Number(item.lat)]
-					}
-				}))
-		)
-	)
-
-	const poiLabelGeojson = computed(() =>
-		createFeatureCollection(
-			mergeLabelPoiList(priorityInfrastructureList.value, props.affectedPoiList)
-				.map((item) => ({
-					type: 'Feature',
-					properties: {
-						id: item.id,
-						name: item.name
-					},
-					geometry: {
-						type: 'Point',
-						coordinates: [Number(item.lng), Number(item.lat)]
-					}
-				}))
-		)
-	)
-
 	function createFeatureCollection(features) {
 		return {
 			type: 'FeatureCollection',
@@ -434,19 +356,6 @@
 			return 'medium'
 		}
 		return 'light'
-	}
-
-	function mergeLabelPoiList(priorityList, affectedList) {
-		const mergedList = []
-		const addedIdSet = new Set()
-		;[...(Array.isArray(priorityList) ? priorityList : []), ...(Array.isArray(affectedList) ? affectedList : [])].forEach((item) => {
-			if (!item?.id || addedIdSet.has(item.id) || !isValidCoordinate(item.lng, item.lat)) {
-				return
-			}
-			addedIdSet.add(item.id)
-			mergedList.push(item)
-		})
-		return mergedList.slice(0, 12)
 	}
 
 	function resolveFloodSeedList({ primaryFirst = [], fallback = [], limit = 3 }) {
@@ -677,25 +586,76 @@
 		gap: 8px;
 	}
 
-	.center-marker__core {
-		width: 16px;
-		height: 16px;
+	.center-marker::before {
+		content: '';
+		position: absolute;
+		top: -12px;
+		left: 50%;
+		width: 44px;
+		height: 44px;
 		border-radius: 50%;
-		border: 2px solid rgba(40, 215, 255, 0.9);
-		background: rgba(232, 251, 255, 0.94);
-		box-shadow: 0 0 0 10px rgba(40, 215, 255, 0.12), 0 0 22px rgba(40, 215, 255, 0.35);
+		border: 2px solid rgba(248, 113, 113, 0.55);
+		background: rgba(239, 68, 68, 0.14);
+		transform: translateX(-50%);
+		animation: centerMarkerPulse 1.8s ease-out infinite;
+	}
+
+	.center-marker__core {
+		position: relative;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		border: 2px solid rgba(254, 202, 202, 0.95);
+		background: radial-gradient(circle, rgba(255, 244, 244, 0.98) 0%, rgba(248, 113, 113, 0.92) 55%, rgba(220, 38, 38, 0.96) 100%);
+		box-shadow: 0 0 0 10px rgba(239, 68, 68, 0.16), 0 0 26px rgba(239, 68, 68, 0.48);
+		animation: centerMarkerFlash 1.2s ease-in-out infinite;
 	}
 
 	.center-marker__label {
 		padding: 6px 12px;
 		border-radius: 999px;
-		background: rgba(6, 20, 39, 0.88);
-		border: 1px solid rgba(40, 215, 255, 0.3);
-		color: #dff8ff;
+		background: rgba(68, 10, 18, 0.92);
+		border: 1px solid rgba(248, 113, 113, 0.68);
+		color: #fff5f5;
 		font-size: 11px;
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		white-space: nowrap;
+		box-shadow: 0 0 16px rgba(239, 68, 68, 0.26);
+		animation: centerMarkerLabelBlink 1.2s steps(2, end) infinite;
+	}
+
+	@keyframes centerMarkerPulse {
+		0% {
+			opacity: 0.9;
+			transform: translateX(-50%) scale(0.72);
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(-50%) scale(1.55);
+		}
+	}
+
+	@keyframes centerMarkerFlash {
+		0%,
+		100% {
+			transform: scale(1);
+			box-shadow: 0 0 0 10px rgba(239, 68, 68, 0.16), 0 0 26px rgba(239, 68, 68, 0.48);
+		}
+		50% {
+			transform: scale(1.18);
+			box-shadow: 0 0 0 16px rgba(239, 68, 68, 0.08), 0 0 34px rgba(248, 113, 113, 0.72);
+		}
+	}
+
+	@keyframes centerMarkerLabelBlink {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.74;
+		}
 	}
 
 	.facility-marker {
