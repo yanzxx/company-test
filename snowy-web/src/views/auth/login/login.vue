@@ -170,10 +170,10 @@
 					</div>
 				</div>
 
-				<div class="storm-login-card__footer">
+				<!-- <div class="storm-login-card__footer">
 					<span>安全等级: 5 级</span>
 					<span>加密连接已激活</span>
-				</div>
+				</div> -->
 			</section>
 		</div>
 	</div>
