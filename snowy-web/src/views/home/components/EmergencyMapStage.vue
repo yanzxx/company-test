@@ -24,9 +24,6 @@
 			<Source id="emergency-center-point" :geojson="centerPointGeojson" />
 			<GeojsonLayer id="emergency-center-glow" source-id="emergency-center-point" map-type="circle" :paint="centerGlowPaint" />
 			<GeojsonLayer id="emergency-center-core" source-id="emergency-center-point" map-type="circle" :paint="centerCorePaint" />
-			<Source id="emergency-leak-points" :geojson="leakGeojson" />
-			<GeojsonLayer id="emergency-leak-glow" source-id="emergency-leak-points" map-type="circle" :paint="leakGlowPaint" />
-			<GeojsonLayer id="emergency-leak-core" source-id="emergency-leak-points" map-type="circle" :paint="leakCorePaint" />
 
 			<Marker marker-id="emergency-center-marker" :coordinate="centerCoordinate" :offset="[0, 0]">
 				<div class="center-marker">
@@ -54,7 +51,13 @@
 				</div>
 			</Marker>
 
-			<Marker v-for="item in displayLeakMarkers" :key="item.id" :marker-id="item.id" :coordinate="[item.lng, item.lat]" :offset="[0, -18]">
+			<Marker
+				v-for="item in displayLeakMarkers"
+				:key="`leak-${item.id}`"
+				:marker-id="`leak-${item.id}`"
+				:coordinate="[item.lng, item.lat]"
+				:offset="[0, -30]"
+			>
 				<div class="leak-marker">
 					<EnvironmentOutlined />
 					<span>{{ item.name }}</span>
@@ -178,7 +181,16 @@
 	const centerCoordinate = computed(() => [safeCenterLng.value, safeCenterLat.value])
 	const affectedPoiIdSet = computed(() => new Set(props.affectedPoiList.map((item) => item.id)))
 	const displayLeakMarkers = computed(() =>
-		props.leakPointList.filter((item) => isValidCoordinate(item.lng, item.lat)).slice(0, 6)
+		props.leakPointList
+			.filter((item) => isValidCoordinate(item.lng, item.lat))
+			.slice(0, 6)
+			.map((item, index) => ({
+				...item,
+				id: item.id || `temp-leak-${index}`,
+				name: item.name || `漏水点-${index + 1}`,
+				lng: Number(item.lng),
+				lat: Number(item.lat)
+			}))
 	)
 	const floodAnimationState = computed(() => {
 		const phase = floodAnimationTick.value * 0.42
@@ -297,18 +309,6 @@
 		'circle-radius': 5,
 		'circle-stroke-color': '#ef4444',
 		'circle-stroke-width': 2.6
-	}
-	const leakGlowPaint = {
-		'circle-color': '#ff879b',
-		'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 18],
-		'circle-opacity': 0.22,
-		'circle-blur': 0.85
-	}
-	const leakCorePaint = {
-		'circle-color': '#ffd2d8',
-		'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3.5, 14, 6],
-		'circle-stroke-color': '#ff6f89',
-		'circle-stroke-width': 2
 	}
 
 	let floodAnimationTimer = null
@@ -441,21 +441,6 @@
 				}
 			}
 		])
-	)
-	const leakGeojson = computed(() =>
-		createFeatureCollection(
-			displayLeakMarkers.value.map((item) => ({
-				type: 'Feature',
-				properties: {
-					id: item.id,
-					name: item.name
-				},
-				geometry: {
-					type: 'Point',
-					coordinates: [Number(item.lng), Number(item.lat)]
-				}
-			}))
-		)
 	)
 	const floodWaveGeojson = computed(() => {
 		const wavePhase = floodAnimationTick.value * 0.3
@@ -811,22 +796,52 @@
 	}
 
 	.leak-marker {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		padding: 7px 12px;
+		padding: 8px 12px;
 		border-radius: 999px;
-		background: rgba(111, 12, 29, 0.84);
-		border: 1px solid rgba(255, 137, 155, 0.42);
-		color: #ffd0d8;
-		font-size: 11px;
-		font-weight: 600;
+		background: rgba(86, 10, 22, 0.96);
+		border: 1px solid rgba(255, 154, 170, 0.72);
+		color: #fff3f5;
+		font-size: 12px;
+		font-weight: 700;
+		line-height: 1;
 		white-space: nowrap;
-		box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), 0 0 18px rgba(255, 111, 137, 0.18);
+		box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32), 0 0 18px rgba(255, 111, 137, 0.28);
+		z-index: 12;
+		transform: translateY(-6px);
+	}
+
+	.leak-marker::before {
+		content: '';
+		position: absolute;
+		left: 50%;
+		bottom: -11px;
+		width: 2px;
+		height: 10px;
+		background: linear-gradient(180deg, rgba(255, 165, 176, 0.88), rgba(255, 165, 176, 0));
+		transform: translateX(-50%);
+	}
+
+	.leak-marker::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		bottom: -16px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #ff6f89;
+		border: 2px solid rgba(255, 241, 242, 0.95);
+		box-shadow: 0 0 0 6px rgba(255, 111, 137, 0.16);
+		transform: translateX(-50%);
 	}
 
 	.leak-marker .anticon {
-		font-size: 12px;
+		font-size: 13px;
+		color: #ffb3c0;
 	}
 
 	@keyframes centerMarkerPulse {
