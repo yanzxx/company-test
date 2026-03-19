@@ -12,12 +12,20 @@
 			<RasterLayer id="emergency-dark-label" :url="darkLabelUrl" :paint="labelRasterPaint" />
 
 			<Source id="emergency-flood-zones" :geojson="floodZoneGeojson" />
+			<Source id="emergency-flood-wave-bands" :geojson="floodWaveGeojson" />
+			<GeojsonLayer id="emergency-flood-wave-fill" source-id="emergency-flood-wave-bands" map-type="fill" :paint="floodWaveFillPaint" />
+			<GeojsonLayer id="emergency-flood-wave-line" source-id="emergency-flood-wave-bands" map-type="line" :paint="floodWaveLinePaint" />
 			<GeojsonLayer id="emergency-flood-fill" source-id="emergency-flood-zones" map-type="fill" :paint="floodFillPaint" />
+			<GeojsonLayer id="emergency-flood-ripple-soft" source-id="emergency-flood-zones" map-type="line" :paint="floodRippleSoftPaint" />
+			<GeojsonLayer id="emergency-flood-ripple" source-id="emergency-flood-zones" map-type="line" :paint="floodRipplePaint" />
 			<GeojsonLayer id="emergency-flood-line" source-id="emergency-flood-zones" map-type="line" :paint="floodLinePaint" />
 
 			<Source id="emergency-center-point" :geojson="centerPointGeojson" />
 			<GeojsonLayer id="emergency-center-glow" source-id="emergency-center-point" map-type="circle" :paint="centerGlowPaint" />
 			<GeojsonLayer id="emergency-center-core" source-id="emergency-center-point" map-type="circle" :paint="centerCorePaint" />
+			<Source id="emergency-leak-points" :geojson="leakGeojson" />
+			<GeojsonLayer id="emergency-leak-glow" source-id="emergency-leak-points" map-type="circle" :paint="leakGlowPaint" />
+			<GeojsonLayer id="emergency-leak-core" source-id="emergency-leak-points" map-type="circle" :paint="leakCorePaint" />
 
 			<Marker marker-id="emergency-center-marker" :coordinate="centerCoordinate" :offset="[0, 0]">
 				<div class="center-marker">
@@ -45,6 +53,13 @@
 				</div>
 			</Marker>
 
+			<Marker v-for="item in displayLeakMarkers" :key="item.id" :marker-id="item.id" :coordinate="[item.lng, item.lat]" :offset="[0, -18]">
+				<div class="leak-marker">
+					<EnvironmentOutlined />
+					<span>{{ item.name }}</span>
+				</div>
+			</Marker>
+
 		</BaseMap>
 
 		<div class="map-stage__halo"></div>
@@ -65,13 +80,17 @@
 				<span>圈内设施</span>
 				<strong>{{ affectedPoiList.length }}</strong>
 			</div>
+			<div class="map-stage__stat">
+				<span>漏水点</span>
+				<strong>{{ displayLeakMarkers.length }}</strong>
+			</div>
 		</div>
 	</div>
 </template>
 
 <script setup>
-	import { computed } from 'vue'
-	import { AimOutlined } from '@ant-design/icons-vue'
+	import { computed, onMounted, onUnmounted, ref } from 'vue'
+	import { AimOutlined, EnvironmentOutlined } from '@ant-design/icons-vue'
 	import BaseMap from '@/components/BaseMap/index.vue'
 	import RasterLayer from '@/components/BaseMap/MapLayers/RasterLayer.vue'
 	import GeojsonLayer from '@/components/BaseMap/MapLayers/GeojsonLayer.vue'
@@ -85,20 +104,17 @@
 		features: []
 	}
 	const FALLBACK_COLOR = '#8ee7ff'
-	const FLOOD_DEPTH_STYLE_MAP = {
-		heavy: {
-			fill: 'rgba(37, 99, 235, 0.28)',
-			line: '#60a5fa'
-		},
-		medium: {
-			fill: 'rgba(56, 189, 248, 0.24)',
-			line: '#67e8f9'
-		},
-		light: {
-			fill: 'rgba(16, 185, 129, 0.22)',
-			line: '#6ee7b7'
-		}
-	}
+	const FLOOD_ANIMATION_INTERVAL = 180
+	const FLOOD_DEPTH_COLOR_STOPS = [
+		{ depth: 0.3, fill: '#34d399', line: '#86efac', ripple: '#dcfce7' },
+		{ depth: 0.8, fill: '#10b981', line: '#6ee7b7', ripple: '#a7f3d0' },
+		{ depth: 1.2, fill: '#22d3ee', line: '#67e8f9', ripple: '#a5f3fc' },
+		{ depth: 1.5, fill: '#0ea5e9', line: '#38bdf8', ripple: '#7dd3fc' },
+		{ depth: 2.1, fill: '#2563eb', line: '#93c5fd', ripple: '#dbeafe' }
+	]
+	const floodFillColorExpression = buildDepthColorExpression('fill')
+	const floodLineColorExpression = buildDepthColorExpression('line')
+	const floodRippleColorExpression = buildDepthColorExpression('ripple')
 	const PRIORITY_FACILITY_TYPES = ['应急指挥', '排涝设施', '医院', '学校', '消防设施', '电力设施', '交通枢纽', '物资仓储', '避险点']
 	const FACILITY_SHORT_LABEL_MAP = {
 		应急指挥: '指挥',
@@ -157,8 +173,21 @@
 	const safeCenterLng = computed(() => (Number.isFinite(Number(props.centerLng)) ? Number(props.centerLng) : DEFAULT_CENTER[0]))
 	const safeCenterLat = computed(() => (Number.isFinite(Number(props.centerLat)) ? Number(props.centerLat) : DEFAULT_CENTER[1]))
 	const safeRadiusMeters = computed(() => Math.max(Number(props.radiusMeters || 0), 200))
+	const floodAnimationTick = ref(0)
 	const centerCoordinate = computed(() => [safeCenterLng.value, safeCenterLat.value])
 	const affectedPoiIdSet = computed(() => new Set(props.affectedPoiList.map((item) => item.id)))
+	const displayLeakMarkers = computed(() =>
+		props.leakPointList.filter((item) => isValidCoordinate(item.lng, item.lat)).slice(0, 6)
+	)
+	const floodAnimationState = computed(() => {
+		const phase = floodAnimationTick.value * 0.42
+		return {
+			fillPulse: (Math.sin(phase) + 1) / 2,
+			edgePulse: (Math.sin(phase + Math.PI / 3) + 1) / 2,
+			ripplePrimary: (Math.sin(phase) + 1) / 2,
+			rippleSecondary: (Math.sin(phase + Math.PI * 0.72) + 1) / 2
+		}
+	})
 	const priorityInfrastructureList = computed(() =>
 		PRIORITY_FACILITY_TYPES.flatMap((type) => {
 			const matchedList = props.poiList
@@ -207,31 +236,55 @@
 		'raster-brightness-max': 0.62
 	}
 
-	const floodFillPaint = {
-		'fill-color': [
-			'match',
-			['get', 'depthLevel'],
-			'heavy',
-			FLOOD_DEPTH_STYLE_MAP.heavy.fill,
-			'medium',
-			FLOOD_DEPTH_STYLE_MAP.medium.fill,
-			FLOOD_DEPTH_STYLE_MAP.light.fill
-		],
-		'fill-opacity': 1
-	}
-	const floodLinePaint = {
-		'line-color': [
-			'match',
-			['get', 'depthLevel'],
-			'heavy',
-			FLOOD_DEPTH_STYLE_MAP.heavy.line,
-			'medium',
-			FLOOD_DEPTH_STYLE_MAP.medium.line,
-			FLOOD_DEPTH_STYLE_MAP.light.line
-		],
-		'line-width': 2.2,
-		'line-opacity': 0.92
-	}
+	const floodFillPaint = computed(() => {
+		const { fillPulse } = floodAnimationState.value
+		return {
+			'fill-color': floodFillColorExpression,
+			'fill-opacity': ['interpolate', ['linear'], ['get', 'depthMeters'], 0.3, 0.16 + fillPulse * 0.03, 0.8, 0.2 + fillPulse * 0.04, 1.5, 0.26 + fillPulse * 0.05, 2.1, 0.32 + fillPulse * 0.06]
+		}
+	})
+	const floodWaveFillPaint = computed(() => {
+		const { ripplePrimary, rippleSecondary } = floodAnimationState.value
+		return {
+			'fill-color': floodRippleColorExpression,
+			'fill-opacity': ['case', ['==', ['get', 'bandIndex'], 1], 0.04 + ripplePrimary * 0.07, 0.025 + rippleSecondary * 0.05]
+		}
+	})
+	const floodWaveLinePaint = computed(() => {
+		const { ripplePrimary, rippleSecondary } = floodAnimationState.value
+		return {
+			'line-color': floodRippleColorExpression,
+			'line-width': ['case', ['==', ['get', 'bandIndex'], 1], 1.6 + ripplePrimary * 2.6, 1 + rippleSecondary * 2.1],
+			'line-opacity': ['case', ['==', ['get', 'bandIndex'], 1], 0.2 + (1 - ripplePrimary) * 0.24, 0.14 + (1 - rippleSecondary) * 0.2],
+			'line-blur': 0.7
+		}
+	})
+	const floodLinePaint = computed(() => {
+		const { edgePulse } = floodAnimationState.value
+		return {
+			'line-color': floodLineColorExpression,
+			'line-width': 2 + edgePulse * 0.85,
+			'line-opacity': 0.82 + edgePulse * 0.14
+		}
+	})
+	const floodRipplePaint = computed(() => {
+		const { ripplePrimary } = floodAnimationState.value
+		return {
+			'line-color': floodRippleColorExpression,
+			'line-width': 2.6 + ripplePrimary * 8.8,
+			'line-opacity': 0.03 + (1 - ripplePrimary) * 0.18,
+			'line-blur': 0.4 + ripplePrimary * 1.3
+		}
+	})
+	const floodRippleSoftPaint = computed(() => {
+		const { rippleSecondary } = floodAnimationState.value
+		return {
+			'line-color': floodRippleColorExpression,
+			'line-width': 5.2 + rippleSecondary * 13.5,
+			'line-opacity': 0.015 + (1 - rippleSecondary) * 0.11,
+			'line-blur': 1.1 + rippleSecondary * 2.1
+		}
+	})
 	const centerGlowPaint = {
 		'circle-color': '#ef4444',
 		'circle-radius': 16,
@@ -244,13 +297,37 @@
 		'circle-stroke-color': '#ef4444',
 		'circle-stroke-width': 2.6
 	}
+	const leakGlowPaint = {
+		'circle-color': '#ff879b',
+		'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 18],
+		'circle-opacity': 0.22,
+		'circle-blur': 0.85
+	}
+	const leakCorePaint = {
+		'circle-color': '#ffd2d8',
+		'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3.5, 14, 6],
+		'circle-stroke-color': '#ff6f89',
+		'circle-stroke-width': 2
+	}
+
+	let floodAnimationTimer = null
+
+	onMounted(() => {
+		floodAnimationTimer = window.setInterval(() => {
+			floodAnimationTick.value = (floodAnimationTick.value + 1) % 10000
+		}, FLOOD_ANIMATION_INTERVAL)
+	})
+
+	onUnmounted(() => {
+		if (floodAnimationTimer) {
+			window.clearInterval(floodAnimationTimer)
+			floodAnimationTimer = null
+		}
+	})
 	const mapBbox = computed(() => {
-		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.55, 280, 900)
+		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.68, 320, 980)
 		const focusPoiList = props.affectedPoiList.length ? props.affectedPoiList : priorityInfrastructureList.value
-		const pointList = [
-			...collectBoundsPoints(safeCenterLng.value, safeCenterLat.value, focusRadiusMeters, focusPoiList),
-			...collectGeojsonCoordinatePoints(floodZoneGeojson.value)
-		]
+		const pointList = collectBoundsPoints(safeCenterLng.value, safeCenterLat.value, focusRadiusMeters, focusPoiList)
 		const lngList = pointList.map((item) => item[0])
 		const latList = pointList.map((item) => item[1])
 		const minLng = Math.min(...lngList)
@@ -266,6 +343,7 @@
 	})
 
 	const floodZoneGeojson = computed(() => {
+		const animationPhase = floodAnimationTick.value * 0.36
 		const featureList = []
 		const primarySeedList = resolveFloodSeedList({
 			primaryFirst: priorityInfrastructureList.value.filter((item) => item.isAffected),
@@ -282,12 +360,22 @@
 			const radiusY = clamp(safeRadiusMeters.value * 0.11 - index * 18, 120, 240)
 			const rotation = 18 + index * 34
 			const depthMeters = clamp(1.85 - index * 0.32, 0.95, 2.1)
-			const zone = createFloodPocketFeature(item.lng, item.lat, radiusX, radiusY, rotation, {
-				zone: 'primary',
-				seedId: item.id,
-				depthMeters,
-				depthLevel: resolveFloodDepthLevel(depthMeters)
-			})
+			const zone = createFloodPocketFeature(
+				item.lng,
+				item.lat,
+				radiusX,
+				radiusY,
+				rotation,
+				{
+					zone: 'primary',
+					seedId: item.id,
+					depthMeters,
+					depthLevel: resolveFloodDepthLevel(depthMeters)
+				},
+				48,
+				animationPhase + index * 0.85,
+				0.11
+			)
 			if (zone) {
 				featureList.push(zone)
 			}
@@ -298,12 +386,22 @@
 			const radiusY = clamp(safeRadiusMeters.value * 0.08 - index * 10, 80, 170)
 			const rotation = 42 + index * 29
 			const depthMeters = clamp(1.05 - index * 0.18, 0.35, 1.1)
-			const zone = createFloodPocketFeature(item.lng, item.lat, radiusX, radiusY, rotation, {
-				zone: 'secondary',
-				seedId: item.id,
-				depthMeters,
-				depthLevel: resolveFloodDepthLevel(depthMeters)
-			})
+			const zone = createFloodPocketFeature(
+				item.lng,
+				item.lat,
+				radiusX,
+				radiusY,
+				rotation,
+				{
+					zone: 'secondary',
+					seedId: item.id,
+					depthMeters,
+					depthLevel: resolveFloodDepthLevel(depthMeters)
+				},
+				48,
+				animationPhase + 1.4 + index * 0.68,
+				0.08
+			)
 			if (zone) {
 				featureList.push(zone)
 			}
@@ -316,7 +414,10 @@
 				clamp(safeRadiusMeters.value * 0.16, 180, 320),
 				clamp(safeRadiusMeters.value * 0.1, 120, 220),
 				20,
-				{ zone: 'primary', seedId: 'fallback-center', depthMeters: 1.2, depthLevel: resolveFloodDepthLevel(1.2) }
+				{ zone: 'primary', seedId: 'fallback-center', depthMeters: 1.2, depthLevel: resolveFloodDepthLevel(1.2) },
+				48,
+				animationPhase,
+				0.1
 			)
 			if (fallbackZone) {
 				featureList.push(fallbackZone)
@@ -340,6 +441,42 @@
 			}
 		])
 	)
+	const leakGeojson = computed(() =>
+		createFeatureCollection(
+			displayLeakMarkers.value.map((item) => ({
+				type: 'Feature',
+				properties: {
+					id: item.id,
+					name: item.name
+				},
+				geometry: {
+					type: 'Point',
+					coordinates: [Number(item.lng), Number(item.lat)]
+				}
+			}))
+		)
+	)
+	const floodWaveGeojson = computed(() => {
+		const wavePhase = floodAnimationTick.value * 0.3
+		const featureList = []
+		;(Array.isArray(floodZoneGeojson.value?.features) ? floodZoneGeojson.value.features : []).forEach((feature, index) => {
+			const nearBand = createFloodWaveBandFeature(feature, 1.1 + Math.sin(wavePhase + index * 0.4) * 0.05, {
+				...(feature.properties || {}),
+				bandIndex: 1
+			})
+			const farBand = createFloodWaveBandFeature(feature, 1.24 + Math.sin(wavePhase + 1.2 + index * 0.33) * 0.08, {
+				...(feature.properties || {}),
+				bandIndex: 2
+			})
+			if (nearBand) {
+				featureList.push(nearBand)
+			}
+			if (farBand) {
+				featureList.push(farBand)
+			}
+		})
+		return createFeatureCollection(featureList)
+	})
 
 	function createFeatureCollection(features) {
 		return {
@@ -375,7 +512,7 @@
 		return resultList
 	}
 
-	function createFloodPocketFeature(centerLng, centerLat, radiusXMeters, radiusYMeters, rotationDeg, properties = {}, segments = 48) {
+	function createFloodPocketFeature(centerLng, centerLat, radiusXMeters, radiusYMeters, rotationDeg, properties = {}, segments = 48, phase = 0, pulseScale = 0) {
 		if (
 			!isValidCoordinate(centerLng, centerLat) ||
 			!Number.isFinite(Number(radiusXMeters)) ||
@@ -387,11 +524,16 @@
 		}
 		const coordinates = []
 		const rotation = (Number(rotationDeg) * Math.PI) / 180
+		const scale = 1 + Math.sin(Number(phase)) * Number(pulseScale || 0)
 		for (let index = 0; index <= segments; index += 1) {
 			const angle = (Math.PI * 2 * index) / segments
-			const waveFactor = 1 + 0.12 * Math.sin(angle * 3 + rotation) + 0.06 * Math.cos(angle * 2 - rotation)
-			const ellipseEast = Math.cos(angle) * Number(radiusXMeters) * waveFactor
-			const ellipseNorth = Math.sin(angle) * Number(radiusYMeters) * waveFactor
+			const waveFactor =
+				1 +
+				0.14 * Math.sin(angle * 3 + rotation + Number(phase)) +
+				0.08 * Math.cos(angle * 2 - rotation - Number(phase) * 0.7) +
+				0.04 * Math.sin(angle * 6 + Number(phase) * 1.8)
+			const ellipseEast = Math.cos(angle) * Number(radiusXMeters) * waveFactor * scale
+			const ellipseNorth = Math.sin(angle) * Number(radiusYMeters) * waveFactor * scale
 			const eastMeters = ellipseEast * Math.cos(rotation) - ellipseNorth * Math.sin(rotation)
 			const northMeters = ellipseEast * Math.sin(rotation) + ellipseNorth * Math.cos(rotation)
 			coordinates.push([offsetLng(centerLng, centerLat, eastMeters), offsetLat(centerLat, northMeters)])
@@ -408,6 +550,48 @@
 
 	function clamp(value, min, max) {
 		return Math.min(Math.max(Number(value), min), max)
+	}
+
+	function buildDepthColorExpression(colorKey) {
+		const expression = ['interpolate', ['linear'], ['get', 'depthMeters']]
+		FLOOD_DEPTH_COLOR_STOPS.forEach((item) => {
+			expression.push(item.depth, item[colorKey])
+		})
+		return expression
+	}
+
+	function createFloodWaveBandFeature(feature, scaleFactor, properties = {}) {
+		const ring = feature?.geometry?.type === 'Polygon' ? feature.geometry.coordinates?.[0] : null
+		if (!Array.isArray(ring) || ring.length < 4 || Number(scaleFactor) <= 1) {
+			return null
+		}
+		const center = calculatePolygonCenter(ring)
+		const outerRing = ring.map((item) => scaleCoordinateFromCenter(item, center, scaleFactor))
+		const innerRing = ring.slice().reverse()
+		return {
+			type: 'Feature',
+			properties,
+			geometry: {
+				type: 'Polygon',
+				coordinates: [outerRing, innerRing]
+			}
+		}
+	}
+
+	function calculatePolygonCenter(ring) {
+		const validRing = ring.slice(0, -1)
+		if (!validRing.length) {
+			return [0, 0]
+		}
+		const lngTotal = validRing.reduce((total, item) => total + Number(item[0] || 0), 0)
+		const latTotal = validRing.reduce((total, item) => total + Number(item[1] || 0), 0)
+		return [lngTotal / validRing.length, latTotal / validRing.length]
+	}
+
+	function scaleCoordinateFromCenter(coordinate, center, scaleFactor) {
+		const lng = Number(center[0]) + (Number(coordinate[0]) - Number(center[0])) * Number(scaleFactor)
+		const lat = Number(center[1]) + (Number(coordinate[1]) - Number(center[1])) * Number(scaleFactor)
+		return [lng, lat]
 	}
 
 	function collectBoundsPoints(centerLng, centerLat, radiusMeters, poiList) {
@@ -623,6 +807,25 @@
 		white-space: nowrap;
 		box-shadow: 0 0 16px rgba(239, 68, 68, 0.26);
 		animation: centerMarkerLabelBlink 1.2s steps(2, end) infinite;
+	}
+
+	.leak-marker {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 12px;
+		border-radius: 999px;
+		background: rgba(111, 12, 29, 0.84);
+		border: 1px solid rgba(255, 137, 155, 0.42);
+		color: #ffd0d8;
+		font-size: 11px;
+		font-weight: 600;
+		white-space: nowrap;
+		box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), 0 0 18px rgba(255, 111, 137, 0.18);
+	}
+
+	.leak-marker .anticon {
+		font-size: 12px;
 	}
 
 	@keyframes centerMarkerPulse {

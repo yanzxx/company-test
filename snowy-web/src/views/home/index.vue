@@ -431,7 +431,7 @@
 	})
 
 	const scenarioPoiList = computed(() =>
-		queryLocalPoiList(scenarioState.value.centerLng, scenarioState.value.centerLat, scenarioState.value.radiusMeters)
+		(Array.isArray(scenarioState.value.affectedPoiList) ? scenarioState.value.affectedPoiList : []).slice()
 	)
 	const responseLevel = computed(() => {
 		const radiusMeters = Number(scenarioState.value.radiusMeters || 0)
@@ -556,37 +556,11 @@
 			radiusMeters: DEFAULT_RADIUS_METERS,
 			totalPoiCount: 0,
 			poiCountInRange: 0,
+			affectedPoiList: [],
 			signalCounter: 0,
 			latestSignal: null,
 			leakPointList: []
 		}
-	}
-
-	function calcDistanceMeters(centerLng, centerLat, targetLng, targetLat) {
-		const earthRadius = 6371000
-		const latDistance = ((targetLat - centerLat) * Math.PI) / 180
-		const lngDistance = ((targetLng - centerLng) * Math.PI) / 180
-		const a =
-			Math.sin(latDistance / 2) * Math.sin(latDistance / 2) +
-			Math.cos((centerLat * Math.PI) / 180) *
-				Math.cos((targetLat * Math.PI) / 180) *
-				Math.sin(lngDistance / 2) *
-				Math.sin(lngDistance / 2)
-		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-		return earthRadius * c
-	}
-
-	function queryLocalPoiList(centerLng, centerLat, radiusMeters) {
-		if (!Number.isFinite(centerLng) || !Number.isFinite(centerLat) || !Number.isFinite(radiusMeters)) {
-			return []
-		}
-		return poiList.value
-			.map((poi) => ({
-				...poi,
-				distanceMeters: Number(calcDistanceMeters(centerLng, centerLat, poi.lng, poi.lat).toFixed(2))
-			}))
-			.filter((poi) => poi.distanceMeters <= Number(radiusMeters || 0))
-			.sort((left, right) => left.distanceMeters - right.distanceMeters)
 	}
 
 	function countPoiByTypes(typeList) {
@@ -622,6 +596,7 @@
 			...createScenarioState(),
 			...scenarioState.value,
 			...state,
+			affectedPoiList: Array.isArray(state.affectedPoiList) ? state.affectedPoiList : scenarioPoiList.value,
 			leakPointList: Array.isArray(state.leakPointList) ? state.leakPointList : leakPointList.value
 		}
 		radiusDraft.value = Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS)
@@ -842,6 +817,7 @@
 				centerLat: Number(data.centerLat || scenarioState.value.centerLat),
 				radiusMeters: Number(data.radiusMeters || scenarioState.value.radiusMeters),
 				poiCountInRange: Number(data.affectedPoiCount || scenarioState.value.poiCountInRange),
+				affectedPoiList: Array.isArray(data.affectedPoiList) ? data.affectedPoiList : scenarioPoiList.value,
 				signalCounter: Number(data.signalNo || scenarioState.value.signalCounter),
 				latestSignal: data,
 				leakPointList: mergedLeakPointList

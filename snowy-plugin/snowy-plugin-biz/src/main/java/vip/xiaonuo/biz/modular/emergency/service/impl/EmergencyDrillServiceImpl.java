@@ -59,6 +59,10 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
     private static final int MAX_LOG_LIMIT = 200;
     private static final int MAX_LOG_SIZE = 500;
     private static final int MAX_LEAK_POINT_SIZE = 20;
+    private static final int INITIAL_LEAK_POINT_SIZE = 2;
+    private static final double LEAK_POINT_ANCHOR_RADIUS_RATIO = 0.88D;
+    private static final double LEAK_POINT_INWARD_OFFSET_METERS = 42D;
+    private static final double LEAK_POINT_LATERAL_OFFSET_METERS = 30D;
     private static final long DISASTER_SIGNAL_INTERVAL_SECONDS = 10L;
     private static final String SYSTEM_OPERATOR_ID = "SYSTEM";
     private static final String SYSTEM_OPERATOR_NAME = "系统模拟器";
@@ -85,10 +89,11 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         scenarioState.setCenterLng(DEFAULT_CENTER_LNG);
         scenarioState.setCenterLat(DEFAULT_CENTER_LAT);
         scenarioState.setRadiusMeters(DEFAULT_RADIUS_METERS);
+        initializeLeakPoints();
         loadPersistedLogs();
         appendLog("SYSTEM_INIT", "初始化应急演练场景",
-                StrUtil.format("已载入{}条模拟POI，并启动{}秒一次的灾情推送。", mockPoiCatalog.size(),
-                        DISASTER_SIGNAL_INTERVAL_SECONDS), SYSTEM_OPERATOR_ID, SYSTEM_OPERATOR_NAME);
+                StrUtil.format("已载入{}条模拟POI，预置{}个漏水点，并启动{}秒一次的灾情推送。", mockPoiCatalog.size(),
+                        leakPointDeque.size(), DISASTER_SIGNAL_INTERVAL_SECONDS), SYSTEM_OPERATOR_ID, SYSTEM_OPERATOR_NAME);
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "emergency-drill-simulator");
             thread.setDaemon(true);
@@ -166,6 +171,7 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
                         StrUtil.isBlank(emergencyRadiusUpdateParam.getRemark()) ? ""
                                 : "，备注：" + emergencyRadiusUpdateParam.getRemark());
         appendCurrentUserLog("RADIUS_UPDATE", "手动更新受灾区域参数", detail);
+        List<EmergencyPoiResult> affectedPoiList = filterPoiInRange(centerLng, centerLat, afterRadius);
         EmergencySignalResult manualUpdateSignal = new EmergencySignalResult();
         manualUpdateSignal.setSignalId(IdUtil.fastSimpleUUID());
         manualUpdateSignal.setSignalNo(signalCounter.incrementAndGet());
@@ -177,7 +183,8 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         manualUpdateSignal.setCenterLat(round(centerLat, 6));
         manualUpdateSignal.setRadiusMeters(round(afterRadius, 2));
         manualUpdateSignal.setRadiusDeltaMeters(round(afterRadius - beforeRadius, 2));
-        manualUpdateSignal.setAffectedPoiCount(filterPoiInRange(centerLng, centerLat, afterRadius).size());
+        manualUpdateSignal.setAffectedPoiCount(affectedPoiList.size());
+        manualUpdateSignal.setAffectedPoiList(affectedPoiList);
         latestSignal = manualUpdateSignal;
         broadcastSignal(manualUpdateSignal);
         return buildScenarioState();
@@ -268,7 +275,9 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         emergencySignalResult.setCenterLng(round(centerLng, 6));
         emergencySignalResult.setCenterLat(round(centerLat, 6));
         emergencySignalResult.setRadiusMeters(round(radiusMeters, 2));
-        emergencySignalResult.setAffectedPoiCount(filterPoiInRange(centerLng, centerLat, radiusMeters).size());
+        List<EmergencyPoiResult> affectedPoiList = filterPoiInRange(centerLng, centerLat, radiusMeters);
+        emergencySignalResult.setAffectedPoiCount(affectedPoiList.size());
+        emergencySignalResult.setAffectedPoiList(affectedPoiList);
         return emergencySignalResult;
     }
 
@@ -295,12 +304,14 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
             centerLat = scenarioState.getCenterLat();
             radiusMeters = scenarioState.getRadiusMeters();
         }
+        List<EmergencyPoiResult> affectedPoiList = filterPoiInRange(centerLng, centerLat, radiusMeters);
         EmergencyScenarioStateResult emergencyScenarioStateResult = new EmergencyScenarioStateResult();
         emergencyScenarioStateResult.setCenterLng(round(centerLng, 6));
         emergencyScenarioStateResult.setCenterLat(round(centerLat, 6));
         emergencyScenarioStateResult.setRadiusMeters(round(radiusMeters, 2));
         emergencyScenarioStateResult.setTotalPoiCount(mockPoiCatalog.size());
-        emergencyScenarioStateResult.setPoiCountInRange(filterPoiInRange(centerLng, centerLat, radiusMeters).size());
+        emergencyScenarioStateResult.setPoiCountInRange(affectedPoiList.size());
+        emergencyScenarioStateResult.setAffectedPoiList(affectedPoiList);
         emergencyScenarioStateResult.setSignalCounter(signalCounter.get());
         emergencyScenarioStateResult.setLatestSignal(copySignal(latestSignal));
         emergencyScenarioStateResult.setLeakPointList(leakPointDeque.stream().map(this::copyLeakPoint).collect(Collectors.toList()));
@@ -345,16 +356,86 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         return resultList;
     }
 
+    private void initializeLeakPoints() {
+        leakPointDeque.clear();
+        for (int index = 0; index < INITIAL_LEAK_POINT_SIZE; index++) {
+            leakPointDeque.addLast(createInitialLeakPoint(DEFAULT_CENTER_LNG, DEFAULT_CENTER_LAT, DEFAULT_RADIUS_METERS, index));
+        }
+    }
+
+    private EmergencyLeakPointResult createInitialLeakPoint(double centerLng, double centerLat, double radiusMeters, int index) {
+        String leakPointName = String.format("漏水点-预置%02d", index + 1);
+        EmergencyPoiResult anchorPoi = selectLeakAnchorPoi(centerLng, centerLat, radiusMeters, index);
+        if (ObjectUtil.isNotEmpty(anchorPoi)) {
+            return createLeakPointAroundPoi(anchorPoi, centerLng, centerLat, leakPointName, index);
+        }
+        return createFallbackLeakPoint(centerLng, centerLat, leakPointName, index);
+    }
+
     private EmergencyLeakPointResult createLeakPoint(double centerLng, double centerLat, double radiusMeters, Long signalNo) {
-        double angle = ThreadLocalRandom.current().nextDouble(0D, Math.PI * 2D);
-        double distance = radiusMeters * ThreadLocalRandom.current().nextDouble(0.35D, 1.05D);
-        double eastMeters = Math.cos(angle) * distance;
-        double northMeters = Math.sin(angle) * distance;
+        String leakPointName = String.format("漏水点-%03d", signalNo);
+        EmergencyPoiResult anchorPoi = selectLeakAnchorPoi(centerLng, centerLat, radiusMeters, signalNo);
+        if (ObjectUtil.isNotEmpty(anchorPoi)) {
+            return createLeakPointAroundPoi(anchorPoi, centerLng, centerLat, leakPointName, signalNo);
+        }
+        return createFallbackLeakPoint(centerLng, centerLat, leakPointName, signalNo);
+    }
+
+    private EmergencyPoiResult selectLeakAnchorPoi(double centerLng, double centerLat, double radiusMeters, long seed) {
+        double anchorRadiusMeters = Math.max(radiusMeters * LEAK_POINT_ANCHOR_RADIUS_RATIO, 320D);
+        List<EmergencyPoiResult> candidatePoiList = filterPoiInRange(centerLng, centerLat, anchorRadiusMeters);
+        if (candidatePoiList.isEmpty()) {
+            return null;
+        }
+        int windowSize = Math.min(candidatePoiList.size(), 18);
+        int selectedIndex = (int) Math.floorMod(seed * 5L + 3L, windowSize);
+        return candidatePoiList.get(selectedIndex);
+    }
+
+    private EmergencyLeakPointResult createLeakPointAroundPoi(EmergencyPoiResult anchorPoi, double centerLng, double centerLat,
+                                                              String leakPointName, long seed) {
+        double anchorLng = anchorPoi.getLng();
+        double anchorLat = anchorPoi.getLat();
+        double toCenterEastMeters = (centerLng - anchorLng) * 111320D * Math.cos(Math.toRadians(anchorLat));
+        double toCenterNorthMeters = (centerLat - anchorLat) * 110540D;
+        double vectorLength = Math.sqrt(toCenterEastMeters * toCenterEastMeters + toCenterNorthMeters * toCenterNorthMeters);
+
+        double inwardEastMeters;
+        double inwardNorthMeters;
+        double lateralEastMeters;
+        double lateralNorthMeters;
+        if (vectorLength > 1D) {
+            inwardEastMeters = toCenterEastMeters / vectorLength * LEAK_POINT_INWARD_OFFSET_METERS;
+            inwardNorthMeters = toCenterNorthMeters / vectorLength * LEAK_POINT_INWARD_OFFSET_METERS;
+            double lateralDirection = Math.floorMod(seed, 2L) == 0L ? 1D : -1D;
+            lateralEastMeters = -toCenterNorthMeters / vectorLength * LEAK_POINT_LATERAL_OFFSET_METERS * lateralDirection;
+            lateralNorthMeters = toCenterEastMeters / vectorLength * LEAK_POINT_LATERAL_OFFSET_METERS * lateralDirection;
+        } else {
+            double fallbackDirection = Math.floorMod(seed, 2L) == 0L ? 1D : -1D;
+            inwardEastMeters = -18D;
+            inwardNorthMeters = 34D;
+            lateralEastMeters = 26D * fallbackDirection;
+            lateralNorthMeters = 12D * fallbackDirection;
+        }
+
+        return buildLeakPoint(anchorLng, anchorLat, inwardEastMeters + lateralEastMeters,
+                inwardNorthMeters + lateralNorthMeters, leakPointName);
+    }
+
+    private EmergencyLeakPointResult createFallbackLeakPoint(double centerLng, double centerLat, String leakPointName, long seed) {
+        double[] eastOffsetArray = {-360D, -240D, -120D};
+        double[] northOffsetArray = {420D, 260D, 580D};
+        int fallbackIndex = (int) Math.floorMod(seed, eastOffsetArray.length);
+        return buildLeakPoint(centerLng, centerLat, eastOffsetArray[fallbackIndex], northOffsetArray[fallbackIndex], leakPointName);
+    }
+
+    private EmergencyLeakPointResult buildLeakPoint(double anchorLng, double anchorLat, double eastMeters, double northMeters,
+                                                    String leakPointName) {
         EmergencyLeakPointResult emergencyLeakPointResult = new EmergencyLeakPointResult();
         emergencyLeakPointResult.setId(IdUtil.fastSimpleUUID());
-        emergencyLeakPointResult.setName(String.format("漏水点-%03d", signalNo));
-        emergencyLeakPointResult.setLng(round(offsetLng(centerLng, centerLat, eastMeters), 6));
-        emergencyLeakPointResult.setLat(round(offsetLat(centerLat, northMeters), 6));
+        emergencyLeakPointResult.setName(leakPointName);
+        emergencyLeakPointResult.setLng(round(offsetLng(anchorLng, anchorLat, eastMeters), 6));
+        emergencyLeakPointResult.setLat(round(offsetLat(anchorLat, northMeters), 6));
         emergencyLeakPointResult.setDetectedTime(new Date());
         return emergencyLeakPointResult;
     }
@@ -424,6 +505,8 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         result.setRadiusMeters(emergencySignalResult.getRadiusMeters());
         result.setRadiusDeltaMeters(emergencySignalResult.getRadiusDeltaMeters());
         result.setAffectedPoiCount(emergencySignalResult.getAffectedPoiCount());
+        result.setAffectedPoiList(ObjectUtil.isEmpty(emergencySignalResult.getAffectedPoiList()) ? Collections.emptyList()
+                : emergencySignalResult.getAffectedPoiList().stream().map(this::copyPoi).collect(Collectors.toList()));
         result.setLeakPoint(copyLeakPoint(emergencySignalResult.getLeakPoint()));
         return result;
     }

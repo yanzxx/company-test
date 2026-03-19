@@ -36,6 +36,10 @@ public class EmergencyScenarioStateResult {
     @ApiModelProperty(value = "当前影响POI数量")
     private Integer poiCountInRange;
 
+    /** 当前影响POI列表 */
+    @ApiModelProperty(value = "当前影响POI列表")
+    private List<EmergencyPoiResult> affectedPoiList;
+
     /** 累计信号数 */
     @ApiModelProperty(value = "累计推送信号数")
     private Long signalCounter;

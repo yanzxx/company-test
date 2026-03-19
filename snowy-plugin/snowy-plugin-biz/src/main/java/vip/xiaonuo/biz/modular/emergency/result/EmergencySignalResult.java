@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * 灾情信号结果
@@ -59,6 +60,10 @@ public class EmergencySignalResult {
     /** 受影响POI数 */
     @ApiModelProperty(value = "受影响POI数")
     private Integer affectedPoiCount;
+
+    /** 当前受影响POI列表 */
+    @ApiModelProperty(value = "当前受影响POI列表")
+    private List<EmergencyPoiResult> affectedPoiList;
 
     /** 漏水点 */
     @ApiModelProperty(value = "漏水点信息")
