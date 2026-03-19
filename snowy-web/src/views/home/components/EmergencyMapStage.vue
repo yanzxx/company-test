@@ -7,6 +7,7 @@
 			:min-zoom="8"
 			:max-zoom="17"
 			:zoom="12"
+			:lock-camera-after-init="true"
 		>
 			<RasterLayer id="emergency-dark-base" :url="darkBaseUrl" :paint="baseRasterPaint" />
 			<RasterLayer id="emergency-dark-label" :url="darkLabelUrl" :paint="labelRasterPaint" />

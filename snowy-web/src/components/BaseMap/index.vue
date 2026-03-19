@@ -6,6 +6,9 @@
 	import mapboxgl from 'gago-mapbox-gl-cgcs2000'
 	import sysConfig from '@/config/index'
 	const map = ref(null)
+	const hasAppliedInitialView = ref(false)
+	const lastSyncedBbox = ref(null)
+	const lastSyncedCenter = ref(null)
 
 	console.log(map.value, 'mappppppp')
 
@@ -72,6 +75,10 @@
 		addWindow: {
 			type: Boolean,
 			default: false
+		},
+		lockCameraAfterInit: {
+			type: Boolean,
+			default: false
 		}
 	})
 	// 重新启用AdaptBody事件监听（但保持简单）
@@ -103,25 +110,26 @@
 	watch(
 		() => props.bbox,
 		(newValue, oldValue) => {
-			if (newValue !== oldValue) {
-				map.value.fitBounds(newValue, {
-					padding: { top: props.padding[0], bottom: props.padding[1], left: props.padding[2], right: props.padding[3] },
-					duration: 500 // 设置动画持续时间为500毫秒，比默认值更快
-				})
+			if (!map.value || !newValue || isSameBbox(newValue, oldValue) || isSameBbox(newValue, lastSyncedBbox.value)) {
+				return
 			}
+			if (props.lockCameraAfterInit && hasAppliedInitialView.value) {
+				return
+			}
+			fitToBbox(newValue)
 		}
 	)
 	watch(
 		() => props.center,
 		(newValue, oldValue) => {
 			console.log(newValue)
-			if (newValue !== oldValue && newValue) {
-				map.value &&
-					map.value.jumpTo({
-						center: newValue,
-						zoom: props.zoom
-					})
+			if (!map.value || !newValue || isSamePoint(newValue, oldValue) || isSamePoint(newValue, lastSyncedCenter.value)) {
+				return
 			}
+			if (props.lockCameraAfterInit && hasAppliedInitialView.value) {
+				return
+			}
+			jumpToCenter(newValue)
 		}
 	)
 	const init = () => {
@@ -153,9 +161,7 @@
 		}
 		window._map = map.value
 		if (props.center) {
-			map.value.jumpTo({
-				center: props.center
-			})
+			jumpToCenter(props.center)
 			provide('map', map)
 			map.value.on('load', () => {
 				mapLoaded.value = true
@@ -163,10 +169,7 @@
 			return
 		}
 		if (props.bbox) {
-			map.value.fitBounds(props.bbox, {
-				padding: { top: props.padding[0], bottom: props.padding[1], left: props.padding[2], right: props.padding[3] },
-				duration: 500 // 设置动画持续时间为500毫秒，比默认值更快
-			})
+			fitToBbox(props.bbox, false)
 		}
 		
 		provide('map', map)
@@ -184,6 +187,64 @@
 		if (map.value) {
 			map.value.resize()
 		}
+	}
+
+	const fitToBbox = (bbox, animate = true) => {
+		if (!map.value || !bbox) {
+			return
+		}
+		map.value.fitBounds(bbox, {
+			padding: { top: props.padding[0], bottom: props.padding[1], left: props.padding[2], right: props.padding[3] },
+			duration: animate ? 500 : 0
+		})
+		lastSyncedBbox.value = cloneBbox(bbox)
+		hasAppliedInitialView.value = true
+	}
+
+	const jumpToCenter = (center) => {
+		if (!map.value || !center) {
+			return
+		}
+		map.value.jumpTo({
+			center,
+			zoom: props.zoom
+		})
+		lastSyncedCenter.value = clonePoint(center)
+		hasAppliedInitialView.value = true
+	}
+
+	const cloneBbox = (bbox) => {
+		if (!Array.isArray(bbox) || bbox.length < 2) {
+			return null
+		}
+		return [
+			[Number(bbox[0]?.[0]), Number(bbox[0]?.[1])],
+			[Number(bbox[1]?.[0]), Number(bbox[1]?.[1])]
+		]
+	}
+
+	const clonePoint = (point) => {
+		if (!Array.isArray(point) || point.length < 2) {
+			return null
+		}
+		return [Number(point[0]), Number(point[1])]
+	}
+
+	const isSamePoint = (left, right, tolerance = 0.000001) => {
+		if (!Array.isArray(left) || !Array.isArray(right) || left.length < 2 || right.length < 2) {
+			return false
+		}
+		return Math.abs(Number(left[0]) - Number(right[0])) <= tolerance && Math.abs(Number(left[1]) - Number(right[1])) <= tolerance
+	}
+
+	const isSameBbox = (left, right, tolerance = 0.000001) => {
+		if (!Array.isArray(left) || !Array.isArray(right) || left.length < 2 || right.length < 2) {
+			return false
+		}
+		return (
+			isSamePoint(left[0], right[0], tolerance) &&
+			isSamePoint(left[1], right[1], tolerance)
+		)
 	}
 	
 	// 临时移除容器尺寸监听，防止循环

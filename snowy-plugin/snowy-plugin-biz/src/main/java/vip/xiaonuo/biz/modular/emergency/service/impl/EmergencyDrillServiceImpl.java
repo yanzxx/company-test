@@ -61,8 +61,10 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
     private static final int MAX_LEAK_POINT_SIZE = 20;
     private static final int INITIAL_LEAK_POINT_SIZE = 2;
     private static final double LEAK_POINT_ANCHOR_RADIUS_RATIO = 0.88D;
-    private static final double LEAK_POINT_INWARD_OFFSET_METERS = 42D;
-    private static final double LEAK_POINT_LATERAL_OFFSET_METERS = 30D;
+    private static final double LEAK_POINT_INWARD_OFFSET_BASE_METERS = 8D;
+    private static final double LEAK_POINT_INWARD_OFFSET_SPAN_METERS = 8D;
+    private static final double LEAK_POINT_LATERAL_OFFSET_BASE_METERS = 3D;
+    private static final double LEAK_POINT_LATERAL_OFFSET_SPAN_METERS = 5D;
     private static final long DISASTER_SIGNAL_INTERVAL_SECONDS = 10L;
     private static final String SYSTEM_OPERATOR_ID = "SYSTEM";
     private static final String SYSTEM_OPERATOR_NAME = "系统模拟器";
@@ -399,23 +401,27 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         double toCenterEastMeters = (centerLng - anchorLng) * 111320D * Math.cos(Math.toRadians(anchorLat));
         double toCenterNorthMeters = (centerLat - anchorLat) * 110540D;
         double vectorLength = Math.sqrt(toCenterEastMeters * toCenterEastMeters + toCenterNorthMeters * toCenterNorthMeters);
+        double inwardOffsetMeters = LEAK_POINT_INWARD_OFFSET_BASE_METERS
+                + Math.floorMod(seed * 3L + 1L, 5L) * (LEAK_POINT_INWARD_OFFSET_SPAN_METERS / 4D);
+        double lateralOffsetMeters = LEAK_POINT_LATERAL_OFFSET_BASE_METERS
+                + Math.floorMod(seed * 5L + 2L, 6L) * (LEAK_POINT_LATERAL_OFFSET_SPAN_METERS / 5D);
 
         double inwardEastMeters;
         double inwardNorthMeters;
         double lateralEastMeters;
         double lateralNorthMeters;
         if (vectorLength > 1D) {
-            inwardEastMeters = toCenterEastMeters / vectorLength * LEAK_POINT_INWARD_OFFSET_METERS;
-            inwardNorthMeters = toCenterNorthMeters / vectorLength * LEAK_POINT_INWARD_OFFSET_METERS;
+            inwardEastMeters = toCenterEastMeters / vectorLength * inwardOffsetMeters;
+            inwardNorthMeters = toCenterNorthMeters / vectorLength * inwardOffsetMeters;
             double lateralDirection = Math.floorMod(seed, 2L) == 0L ? 1D : -1D;
-            lateralEastMeters = -toCenterNorthMeters / vectorLength * LEAK_POINT_LATERAL_OFFSET_METERS * lateralDirection;
-            lateralNorthMeters = toCenterEastMeters / vectorLength * LEAK_POINT_LATERAL_OFFSET_METERS * lateralDirection;
+            lateralEastMeters = -toCenterNorthMeters / vectorLength * lateralOffsetMeters * lateralDirection;
+            lateralNorthMeters = toCenterEastMeters / vectorLength * lateralOffsetMeters * lateralDirection;
         } else {
             double fallbackDirection = Math.floorMod(seed, 2L) == 0L ? 1D : -1D;
-            inwardEastMeters = -18D;
-            inwardNorthMeters = 34D;
-            lateralEastMeters = 26D * fallbackDirection;
-            lateralNorthMeters = 12D * fallbackDirection;
+            inwardEastMeters = -6D;
+            inwardNorthMeters = 10D;
+            lateralEastMeters = 8D * fallbackDirection;
+            lateralNorthMeters = 4D * fallbackDirection;
         }
 
         return buildLeakPoint(anchorLng, anchorLat, inwardEastMeters + lateralEastMeters,
@@ -423,8 +429,8 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
     }
 
     private EmergencyLeakPointResult createFallbackLeakPoint(double centerLng, double centerLat, String leakPointName, long seed) {
-        double[] eastOffsetArray = {-360D, -240D, -120D};
-        double[] northOffsetArray = {420D, 260D, 580D};
+        double[] eastOffsetArray = {-110D, -70D, -35D};
+        double[] northOffsetArray = {140D, 90D, 180D};
         int fallbackIndex = (int) Math.floorMod(seed, eastOffsetArray.length);
         return buildLeakPoint(centerLng, centerLat, eastOffsetArray[fallbackIndex], northOffsetArray[fallbackIndex], leakPointName);
     }
