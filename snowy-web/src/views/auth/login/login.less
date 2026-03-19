@@ -1,151 +1,595 @@
+@storm-cyan: #22d3ee;
+@storm-blue: #3b82f6;
+@storm-card-bg: rgba(9, 20, 44, 0.72);
+@storm-card-border: rgba(148, 163, 184, 0.18);
+
 .login-icon-gray {
-  color: rgba(0, 0, 0, 0.25);
+	color: rgba(148, 163, 184, 0.78);
+	font-size: 16px;
 }
+
 .login-validCode-img {
-  border: 1px solid var(--border-color-split);
-  cursor: pointer;
-  width: 100%;
-  height: 40px;
+	width: 100%;
+	height: 48px;
+	display: block;
+	border-radius: 14px;
+	border: 1px solid @storm-card-border;
+	object-fit: cover;
+	background: rgba(15, 23, 42, 0.78);
+	cursor: pointer;
+	transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
-.login_background {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-size: cover;
-  background-position: center;
-  background-image: url(/img/login_background.png);
+
+.login-validCode-img:hover {
+	transform: translateY(-1px);
+	border-color: rgba(34, 211, 238, 0.45);
+	box-shadow: 0 10px 24px rgba(14, 165, 233, 0.16);
 }
-.login_background_front {
-  width: 450px;
-  height: 450px;
-  margin-left: 100px;
-  margin-top: 15%;
-  overflow: hidden;
-  /*position: relative;*/
-  background-size: cover;
-  background-position: center;
-  background-image: url(/img/login_background_front.png);
-  animation-name: myfirst;
-  animation-duration: 5s;
-  animation-timing-function: linear;
-  animation-delay: 1s;
-  animation-iteration-count: infinite;
-  animation-direction: alternate;
-  animation-play-state: running;
+
+.storm-login-page {
+	position: relative;
+	min-height: 100vh;
+	overflow: hidden;
+	background: #020617;
+	color: #e2e8f0;
 }
-@keyframes myfirst {
-  0% {
-    left: 0px;
-    top: 0px;
-  }
-  50% {
-    left: 50px;
-    top: 0px;
-  }
-  100% {
-    left: 0px;
-    top: 0px;
-  }
+
+.storm-login-page__bg,
+.storm-login-page__overlay,
+.storm-login-page__glow,
+.storm-login-page__flash,
+.storm-login-page__lightning {
+	position: absolute;
+	inset: 0;
 }
-@-webkit-keyframes myfirst /* Safari and Chrome */ {
-  0% {
-    left: 0px;
-    top: 0px;
-  }
-  50% {
-    left: 50px;
-    top: 0px;
-  }
-  100% {
-    left: 0px;
-    top: 0px;
-  }
+
+.storm-login-page__bg {
+	background: url('/img/login_storm_bg.png') center center / cover no-repeat;
+	transform: scale(1.08);
+	filter: saturate(1.04) brightness(0.62) contrast(1.08);
 }
-.login_adv__title h2 {
-  font-size: 40px;
+
+.storm-login-page__overlay {
+	background:
+		radial-gradient(circle at 16% 50%, rgba(14, 165, 233, 0.2), transparent 30%),
+		radial-gradient(circle at 74% 28%, rgba(59, 130, 246, 0.16), transparent 24%),
+		linear-gradient(112deg, rgba(2, 6, 23, 0.2) 0%, rgba(2, 6, 23, 0.44) 36%, rgba(2, 6, 23, 0.88) 100%),
+		linear-gradient(180deg, rgba(2, 6, 23, 0.08) 0%, rgba(2, 6, 23, 0.52) 48%, rgba(2, 6, 23, 0.94) 100%);
 }
-.login_adv__title h4 {
-  font-size: 18px;
-  margin-top: 10px;
-  font-weight: normal;
+
+.storm-login-page__glow {
+	filter: blur(110px);
+	opacity: 0.42;
 }
-.login_adv__title p {
-  font-size: 14px;
-  margin-top: 10px;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.6);
+
+.storm-login-page__glow--left {
+	top: 18%;
+	left: -8%;
+	width: 320px;
+	height: 320px;
+	inset: auto;
+	background: rgba(34, 211, 238, 0.3);
 }
-.login_adv__title div {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
+
+.storm-login-page__glow--right {
+	right: 2%;
+	bottom: 10%;
+	width: 260px;
+	height: 260px;
+	inset: auto;
+	background: rgba(59, 130, 246, 0.24);
 }
-.login_adv__title div span {
-  margin-right: 15px;
+
+.storm-login-page__flash {
+	pointer-events: none;
+	background: #fff;
+	opacity: 0;
+	z-index: 4;
+	transition: opacity 0.14s ease-out;
 }
-.login_adv__title div i {
-  font-size: 40px;
+
+.storm-login-page__flash.is-active {
+	opacity: 0.18;
 }
-.login_adv__title div i.add {
-  font-size: 20px;
-  color: rgba(255, 255, 255, 0.6);
+
+.storm-login-page__lightning {
+	pointer-events: none;
+	z-index: 3;
 }
-/*background-image:linear-gradient(transparent, #000);*/
-.login_main {
-  flex: 1;
-  overflow: auto;
-  display: flex;
+
+.storm-login-page__bolt {
+	fill: none;
+	stroke: rgba(224, 242, 254, 0.94);
+	stroke-width: 2.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	filter: drop-shadow(0 0 8px rgba(125, 211, 252, 0.95));
 }
-.login-form {
-  top: 15%;
-  right: 15%;
-  position: absolute;
-  width: 450px;
-  margin-left: 10%;
-  margin-top: 20px;
-  padding: 10px 0;
-}
-.login-header {
-  margin-bottom: 20px;
-}
-.login-header .logo {
-  display: flex;
-  align-items: center;
-}
-.login-header .logo img {
-  height: 35px;
-  vertical-align: bottom;
-  margin-right: 10px;
-}
-.login-header .logo label {
-  font-size: 24px;
-}
-.login-header h2 {
-  font-size: 24px;
-  font-weight: bold;
-  margin-top: 40px;
-}
+
 .login_config {
-  position: absolute;
-  top: 20px;
-  right: 20px;
+	position: absolute;
+	top: 24px;
+	right: 24px;
+	z-index: 6;
 }
+
+.storm-lang-switch {
+	width: 44px;
+	height: 44px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	border-radius: 999px;
+	background: rgba(8, 15, 34, 0.54);
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	color: rgba(226, 232, 240, 0.94);
+	backdrop-filter: blur(12px);
+	cursor: pointer;
+	transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.storm-lang-switch:hover {
+	transform: translateY(-1px);
+	border-color: rgba(34, 211, 238, 0.42);
+	background: rgba(8, 15, 34, 0.72);
+}
+
+.storm-lang-switch span {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+}
+
+.storm-login-shell {
+	position: relative;
+	z-index: 5;
+	min-height: 100vh;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: clamp(36px, 4vw, 72px);
+	padding: 96px 72px 64px;
+}
+
+.storm-login-hero {
+	flex: 1;
+	max-width: 760px;
+}
+
+.storm-login-hero__badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 16px;
+	border-radius: 999px;
+	background: rgba(7, 15, 36, 0.48);
+	border: 1px solid rgba(125, 211, 252, 0.18);
+	backdrop-filter: blur(10px);
+	color: rgba(191, 219, 254, 0.9);
+	font-size: 12px;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+}
+
+.storm-login-hero__badge-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: @storm-cyan;
+	box-shadow: 0 0 12px rgba(34, 211, 238, 0.9);
+}
+
+.storm-login-hero__title {
+	margin: 28px 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: clamp(54px, 6vw, 92px);
+	font-weight: 800;
+	line-height: 0.92;
+	letter-spacing: -0.06em;
+	color: #f8fafc;
+	text-shadow: 0 0 14px rgba(34, 211, 238, 0.2), 0 0 26px rgba(59, 130, 246, 0.16);
+}
+
+.storm-login-hero__accent {
+	width: 112px;
+	height: 4px;
+	margin-top: 26px;
+	border-radius: 999px;
+	background: linear-gradient(90deg, rgba(34, 211, 238, 1) 0%, rgba(59, 130, 246, 1) 100%);
+	box-shadow: 0 0 18px rgba(34, 211, 238, 0.72);
+}
+
+.storm-login-hero__desc {
+	max-width: 520px;
+	margin-top: 24px;
+	font-size: 16px;
+	line-height: 1.85;
+	color: rgba(203, 213, 225, 0.82);
+}
+
+.storm-login-hero__meta {
+	margin-top: 28px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.storm-login-hero__meta span {
+	padding: 8px 14px;
+	border-radius: 999px;
+	background: rgba(7, 15, 36, 0.48);
+	border: 1px solid rgba(148, 163, 184, 0.16);
+	color: rgba(226, 232, 240, 0.86);
+	font-size: 13px;
+	letter-spacing: 0.08em;
+}
+
+.storm-login-card {
+	width: min(100%, 438px);
+	padding: 34px 32px 24px;
+	border-radius: 24px;
+	background: @storm-card-bg;
+	border: 1px solid @storm-card-border;
+	box-shadow:
+		0 28px 80px rgba(2, 6, 23, 0.5),
+		inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	backdrop-filter: blur(18px);
+}
+
+.storm-login-card__header {
+	margin-bottom: 22px;
+}
+
+.storm-login-card__eyebrow {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	color: #f8fafc;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.storm-login-card__eyebrow-line {
+	width: 3px;
+	height: 18px;
+	border-radius: 999px;
+	background: linear-gradient(180deg, @storm-cyan 0%, @storm-blue 100%);
+	box-shadow: 0 0 12px rgba(34, 211, 238, 0.72);
+}
+
+.storm-login-card__subtitle {
+	margin: 12px 0 0 13px;
+	font-size: 13px;
+	line-height: 1.7;
+	color: rgba(148, 163, 184, 0.9);
+}
+
+.storm-login-switch {
+	display: flex;
+	gap: 8px;
+	padding: 4px;
+	border-radius: 999px;
+	background: rgba(15, 23, 42, 0.62);
+	border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.storm-login-switch button {
+	flex: 1;
+	height: 40px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: rgba(148, 163, 184, 0.94);
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	cursor: pointer;
+	transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.storm-login-switch button.active {
+	background: linear-gradient(135deg, rgba(34, 211, 238, 0.94) 0%, rgba(59, 130, 246, 0.96) 100%);
+	color: #fff;
+	box-shadow: 0 12px 28px rgba(14, 165, 233, 0.28);
+}
+
+.storm-login-pane {
+	margin-top: 24px;
+}
+
+.storm-login-field {
+	margin-bottom: 20px;
+}
+
+.storm-login-field__label {
+	display: block;
+	margin-bottom: 10px;
+	color: rgba(226, 232, 240, 0.92);
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.04em;
+}
+
+.storm-login-card .ant-form-item {
+	margin-bottom: 0;
+}
+
+.storm-login-card .ant-row {
+	margin-bottom: 0;
+}
+
+.storm-login-card .ant-input-affix-wrapper,
+.storm-login-card .ant-input {
+	min-height: 48px;
+	border-radius: 14px;
+	background: rgba(15, 23, 42, 0.74) !important;
+	border-color: rgba(148, 163, 184, 0.18) !important;
+	color: #f8fafc !important;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.storm-login-card .ant-input {
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+
+.storm-login-card .ant-input-affix-wrapper .ant-input {
+	min-height: auto;
+	padding-top: 0;
+	padding-bottom: 0;
+	border: none !important;
+	background: transparent !important;
+	box-shadow: none;
+}
+
+.storm-login-card .ant-input-affix-wrapper:hover,
+.storm-login-card .ant-input:hover {
+	border-color: rgba(96, 165, 250, 0.42) !important;
+}
+
+.storm-login-card .ant-input-affix-wrapper-focused,
+.storm-login-card .ant-input:focus {
+	border-color: rgba(34, 211, 238, 0.7) !important;
+	box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+}
+
+.storm-login-card .ant-input::placeholder,
+.storm-login-card .ant-input-affix-wrapper .ant-input::placeholder {
+	color: rgba(100, 116, 139, 0.92);
+}
+
+.storm-login-card .ant-input-password-icon,
+.storm-login-card .ant-input-clear-icon {
+	color: rgba(148, 163, 184, 0.74);
+}
+
+.storm-login-card .ant-form-item-explain-error {
+	margin-top: 6px;
+	font-size: 12px;
+	color: #fda4af;
+}
+
+.storm-login-links {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 24px 0 18px;
+}
+
+.storm-login-links--compact {
+	margin: 22px 0 4px;
+}
+
+.storm-login-link {
+	color: rgba(125, 211, 252, 0.96);
+	font-size: 13px;
+	transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.storm-login-link:hover {
+	color: #e0f2fe;
+	opacity: 1;
+}
+
+.storm-login-submit {
+	margin-top: 8px;
+}
+
+.storm-login-submit .ant-form-item-control-input {
+	min-height: auto;
+}
+
+.storm-login-submit__btn.ant-btn {
+	height: 52px;
+	border: none;
+	border-radius: 16px;
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: 0.24em;
+	background: linear-gradient(135deg, rgba(34, 211, 238, 1) 0%, rgba(59, 130, 246, 1) 58%, rgba(37, 99, 235, 1) 100%);
+	box-shadow:
+		0 18px 36px rgba(14, 165, 233, 0.28),
+		inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.storm-login-submit__btn.ant-btn:hover,
+.storm-login-submit__btn.ant-btn:focus {
+	background: linear-gradient(135deg, rgba(103, 232, 249, 1) 0%, rgba(59, 130, 246, 1) 58%, rgba(29, 78, 216, 1) 100%);
+	transform: translateY(-1px);
+}
+
+.storm-login-card .ant-btn:not(.ant-btn-primary) {
+	height: 48px;
+	border-radius: 14px;
+	border-color: rgba(148, 163, 184, 0.18);
+	background: rgba(15, 23, 42, 0.78);
+	color: rgba(226, 232, 240, 0.9);
+	box-shadow: none;
+}
+
+.storm-login-card .ant-btn:not(.ant-btn-primary):hover,
+.storm-login-card .ant-btn:not(.ant-btn-primary):focus {
+	border-color: rgba(34, 211, 238, 0.35);
+	color: #f8fafc;
+}
+
+.storm-login-card__footer {
+	margin-top: 28px;
+	padding-top: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	border-top: 1px solid rgba(148, 163, 184, 0.08);
+	font-size: 11px;
+	color: rgba(148, 163, 184, 0.82);
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+}
+
 @media (max-width: 1200px) {
-  .login-form {
-    width: 340px;
-  }
+	.storm-login-shell {
+		padding-left: 48px;
+		padding-right: 48px;
+	}
+
+	.storm-login-card {
+		width: min(100%, 420px);
+	}
 }
-@media (max-width: 1000px) {
-  .login_main {
-    display: block;
-  }
-  .login_background_front {
-    display: none;
-  }
-  .login-form {
-    width: 100%;
-    padding: 20px 40px;
-    right: 0 !important;
-    top: 0 !important;
-  }
+
+@media (max-width: 980px) {
+	.storm-login-shell {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		padding-top: 100px;
+		padding-bottom: 40px;
+	}
+
+	.storm-login-hero {
+		max-width: 100%;
+	}
+
+	.storm-login-card {
+		width: min(100%, 520px);
+	}
+}
+
+@media (max-width: 768px) {
+	.login_config {
+		top: 18px;
+		right: 18px;
+	}
+
+	.storm-login-shell {
+		padding: 86px 18px 28px;
+		gap: 28px;
+	}
+
+	.storm-login-hero__badge {
+		font-size: 11px;
+		letter-spacing: 0.12em;
+	}
+
+	.storm-login-hero__title {
+		font-size: clamp(42px, 15vw, 62px);
+	}
+
+	.storm-login-hero__desc {
+		font-size: 14px;
+		line-height: 1.7;
+	}
+
+	.storm-login-card {
+		padding: 26px 18px 20px;
+		border-radius: 20px;
+	}
+
+	.storm-login-card__subtitle {
+		margin-left: 0;
+	}
+
+	.storm-login-links,
+	.storm-login-card__footer {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+/* SSO回调页等历史页面仍会复用这些类名，保留一套兼容样式避免被本次改造带坏。 */
+.login_background {
+	min-height: 100vh;
+	position: relative;
+	overflow: hidden;
+	background:
+		linear-gradient(180deg, rgba(2, 6, 23, 0.14) 0%, rgba(2, 6, 23, 0.68) 50%, rgba(2, 6, 23, 0.92) 100%),
+		url('/img/login_storm_bg.png') center center / cover no-repeat;
+}
+
+.login_background::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background:
+		radial-gradient(circle at 18% 48%, rgba(14, 165, 233, 0.14), transparent 30%),
+		linear-gradient(112deg, rgba(2, 6, 23, 0.2) 0%, rgba(2, 6, 23, 0.52) 40%, rgba(2, 6, 23, 0.88) 100%);
+}
+
+.login_background_front {
+	display: none;
+}
+
+.login_main {
+	position: relative;
+	z-index: 1;
+	min-height: 100vh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32px 20px;
+}
+
+.login-form {
+	width: min(100%, 430px);
+}
+
+.login-form .ant-card {
+	border-radius: 24px;
+	background: @storm-card-bg;
+	border: 1px solid @storm-card-border;
+	box-shadow:
+		0 28px 80px rgba(2, 6, 23, 0.5),
+		inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	backdrop-filter: blur(18px);
+}
+
+.login-form .ant-card-body {
+	padding: 32px 28px;
+}
+
+.login-header {
+	margin-bottom: 18px;
+}
+
+.login-header .logo {
+	display: flex;
+	align-items: center;
+}
+
+.login-header .logo img {
+	height: 36px;
+	margin-right: 10px;
+}
+
+.login-header .logo label,
+.login-header h2 {
+	margin: 0;
+	color: #f8fafc;
+	font-size: 26px;
+	font-weight: 700;
 }
