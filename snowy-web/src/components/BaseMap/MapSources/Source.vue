@@ -4,7 +4,13 @@
 <script setup>
 	const props = defineProps({
 		id: String,
-		geojson: String,
+		geojson: {
+			type: [Object, Array, String],
+			default: () => ({
+				type: 'FeatureCollection',
+				features: []
+			})
+		},
 		clearLayer: Array
 	})
 
@@ -33,9 +39,12 @@
 	watch(
 		() => props.geojson,
 		() => {
-			const source = map.value.getSource(_sourceName)
-			source.setData(JSON.parse(JSON.stringify(props.geojson)))
-		}
+			const source = map.value?.getSource(_sourceName)
+			if (source) {
+				source.setData(JSON.parse(JSON.stringify(props.geojson)))
+			}
+		},
+		{ deep: true }
 	)
 
 	// 初始化地图
@@ -51,6 +60,9 @@
 	}
 
 	const addSource = () => {
+		if (map.value.getSource(_sourceName)) {
+			return
+		}
 		map.value.addSource(_sourceName, {
 			type: 'geojson',
 			data: props.geojson

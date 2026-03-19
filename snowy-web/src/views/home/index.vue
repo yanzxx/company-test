@@ -2,7 +2,7 @@
     <AdaptBody>
 	<div class="stitch-emergency-page" :class="`level-${responseLevel.key}`">
 		<div class="page-backdrop">
-			<img class="page-backdrop__map" :src="mapBg" alt="应急指挥底图" />
+			<div class="page-backdrop__map" aria-hidden="true"></div>
 			<div class="page-backdrop__gradient"></div>
 			<div class="page-backdrop__mesh"></div>
 		</div>
@@ -27,18 +27,13 @@
 					<span>刷新态势</span>
 				</button>
 				<div class="header-icons">
-					<div
-						class="header-user-shell"
-						:title="userDisplayName"
-						@mouseenter="userMenuOpen = true"
-						@mouseleave="userMenuOpen = false"
-					>
+					<div class="header-user-shell" :title="userDisplayName">
 						<div class="header-user">
 							<a-avatar class="header-avatar" :src="userAvatar">
 								{{ userInitial }}
 							</a-avatar>
 						</div>
-						<div v-show="userMenuOpen" class="header-user-popover">
+						<div class="header-user-popover">
 							<div class="emergency-user-menu__profile">
 								<div class="emergency-user-menu__profile-main">
 									<a-avatar class="header-avatar emergency-user-menu__avatar" :src="userAvatar">
@@ -106,53 +101,16 @@
 
 			<section class="center-stage">
 				<div class="map-stage">
-					<div class="map-stage__halo"></div>
-					<div class="map-stage__overlay"></div>
-
-					<div class="flood-zone flood-zone--primary" :style="primaryFloodStyle">
-						<svg viewBox="0 0 200 150" preserveAspectRatio="none">
-							<path
-								d="M40,20 C60,10 90,30 110,25 C140,20 160,50 170,80 C180,110 150,130 110,140 C70,150 30,130 20,100 C10,70 20,30 40,20 Z"
-							/>
-							<path
-								d="M60,40 C80,35 100,50 120,45 C140,40 150,70 145,90 C140,110 120,120 90,125 C60,130 45,110 40,90 C35,70 45,45 60,40 Z"
-							/>
-						</svg>
-						<div class="flood-zone__label">
-							<span>严重淹没区</span>
-							<strong>{{ primaryFloodDepth }}</strong>
-						</div>
-					</div>
-
-					<div class="flood-zone flood-zone--secondary" :style="secondaryFloodStyle">
-						<svg viewBox="0 0 150 120" preserveAspectRatio="none">
-							<path
-								d="M30,40 C50,20 100,30 120,50 C140,70 120,100 90,110 C60,120 20,100 10,70 C5,45 20,50 30,40 Z"
-							/>
-							<circle cx="75" cy="60" r="15" />
-						</svg>
-						<div class="flood-zone__label flood-zone__label--secondary">
-							<span>次级积水点</span>
-							<strong>{{ secondaryFloodDepth }}</strong>
-						</div>
-					</div>
-
-					<div
-						v-for="marker in mapMarkers"
-						:key="marker.id"
-						class="map-marker"
-						:style="marker.position"
-						:title="marker.name"
-					>
-						<div class="map-marker__box" :style="{ borderColor: marker.meta.color, boxShadow: marker.meta.glow }">
-							<component :is="marker.meta.icon" :style="{ color: marker.meta.color }" />
-						</div>
-					</div>
-
-					<div v-for="leak in leakMarkers" :key="leak.id" class="leak-marker" :style="leak.position">
-						<EnvironmentOutlined />
-						<span>{{ leak.name }}</span>
-					</div>
+					<EmergencyMapStage
+						:center-lng="scenarioState.centerLng"
+						:center-lat="scenarioState.centerLat"
+						:radius-meters="scenarioState.radiusMeters"
+						:poi-list="poiList"
+						:affected-poi-list="scenarioPoiList"
+						:leak-point-list="leakPointList"
+						:level-key="responseLevel.key"
+						:color-map="poiColorMap"
+					/>
 				</div>
 
 				<div class="legend-shell glass-panel">
@@ -343,7 +301,6 @@
 		CarOutlined,
 		ClockCircleOutlined,
 		ControlOutlined,
-		EnvironmentOutlined,
 		ExclamationCircleOutlined,
 		ExportOutlined,
 		HistoryOutlined,
@@ -364,7 +321,7 @@
 	import router from '@/router'
 	import { useGlobalStore } from '@/store'
 	import tool from '@/utils/tool'
-	import mapBg from '@/assets/images/emergency/stitch-map-bg.png'
+	import EmergencyMapStage from './components/EmergencyMapStage.vue'
 
 	const DEFAULT_CENTER_LNG = 113.947321
 	const DEFAULT_CENTER_LAT = 22.543211
@@ -433,7 +390,6 @@
 	const loading = ref(false)
 	const updating = ref(false)
 	const logDrawerOpen = ref(false)
-	const userMenuOpen = ref(false)
 	const streamMode = ref('connecting')
 	const streamHint = ref('正在连接实时推送')
 	const now = ref(dayjs())
@@ -491,65 +447,17 @@
 		}
 		return { key: 'monitor', banner: '暴雨蓝色监测激活', label: '蓝色监测' }
 	})
-
-	const mapBounds = computed(() => {
-		const pointList = [
-			...poiList.value.map((item) => ({ lng: item.lng, lat: item.lat })),
-			...leakPointList.value.map((item) => ({ lng: item.lng, lat: item.lat })),
-			{ lng: scenarioState.value.centerLng, lat: scenarioState.value.centerLat }
-		].filter((item) => Number.isFinite(item.lng) && Number.isFinite(item.lat))
-		if (!pointList.length) {
-			return {
-				minLng: DEFAULT_CENTER_LNG - 0.03,
-				maxLng: DEFAULT_CENTER_LNG + 0.03,
-				minLat: DEFAULT_CENTER_LAT - 0.03,
-				maxLat: DEFAULT_CENTER_LAT + 0.03
-			}
-		}
-		const lngList = pointList.map((item) => item.lng)
-		const latList = pointList.map((item) => item.lat)
-		const rawMinLng = Math.min(...lngList)
-		const rawMaxLng = Math.max(...lngList)
-		const rawMinLat = Math.min(...latList)
-		const rawMaxLat = Math.max(...latList)
-		const lngPadding = Math.max((rawMaxLng - rawMinLng) * 0.12, 0.01)
-		const latPadding = Math.max((rawMaxLat - rawMinLat) * 0.12, 0.01)
-		return {
-			minLng: rawMinLng - lngPadding,
-			maxLng: rawMaxLng + lngPadding,
-			minLat: rawMinLat - latPadding,
-			maxLat: rawMaxLat + latPadding
-		}
-	})
-
-	const visiblePoiList = computed(() => {
-		const affected = scenarioPoiList.value.slice(0, 10)
-		if (affected.length >= 8) {
-			return affected
-		}
-		const backup = poiList.value.filter((item) => !affected.some((affectedItem) => affectedItem.id === item.id)).slice(0, 8 - affected.length)
-		return [...affected, ...backup]
-	})
-
-	const mapMarkers = computed(() =>
-		visiblePoiList.value.map((item) => ({
-			...item,
-			meta: getPoiMeta(item.type),
-			position: buildPointPosition(item.lng, item.lat)
-		}))
-	)
-
-	const leakMarkers = computed(() =>
-		leakPointList.value.slice(0, 6).map((item) => ({
-			...item,
-			position: buildPointPosition(item.lng, item.lat)
-		}))
+	const poiColorMap = computed(() =>
+		Object.keys(poiMetaMap).reduce((result, key) => {
+			result[key] = poiMetaMap[key].color
+			return result
+		}, {})
 	)
 
 	const facilityLegend = computed(() => [
-		{ label: '医疗机构', icon: MedicineBoxOutlined, color: '#00e4ff' },
-		{ label: '教育机构', icon: BankOutlined, color: '#00a3ff' },
-		{ label: '避险设施', icon: SafetyCertificateOutlined, color: '#00e471' }
+		{ label: '医疗机构', icon: MedicineBoxOutlined, color: poiMetaMap.医院.color },
+		{ label: '教育机构', icon: BankOutlined, color: poiMetaMap.学校.color },
+		{ label: '避险设施', icon: SafetyCertificateOutlined, color: poiMetaMap.避险点.color }
 	])
 
 	const facilityStats = computed(() => [
@@ -608,21 +516,6 @@
 	)
 	const primaryFloodDepth = computed(() => `${Math.max(1.8, Math.min(4.8, Number(scenarioState.value.radiusMeters || 0) / 470)).toFixed(1)}m`)
 	const secondaryFloodDepth = computed(() => `${Math.max(0.9, Math.min(2.4, Number(scenarioState.value.radiusMeters || 0) / 930)).toFixed(1)}m`)
-	const primaryFloodStyle = computed(() =>
-		buildFloodStyle(scenarioState.value.centerLng, scenarioState.value.centerLat, scenarioState.value.radiusMeters, 0.95)
-	)
-	const secondaryFloodStyle = computed(() => {
-		const target = leakPointList.value[0]
-		if (target) {
-			return buildFloodStyle(target.lng, target.lat, Number(scenarioState.value.radiusMeters || 0) * 0.55, 0.6)
-		}
-		return buildFloodStyle(
-			Number(scenarioState.value.centerLng || DEFAULT_CENTER_LNG) + 0.011,
-			Number(scenarioState.value.centerLat || DEFAULT_CENTER_LAT) - 0.008,
-			Number(scenarioState.value.radiusMeters || 0) * 0.5,
-			0.55
-		)
-	})
 
 	function createScenarioState() {
 		return {
@@ -634,14 +527,6 @@
 			signalCounter: 0,
 			latestSignal: null,
 			leakPointList: []
-		}
-	}
-
-	function getPoiMeta(type) {
-		return poiMetaMap[type] || {
-			icon: AimOutlined,
-			color: '#d6e3ff',
-			glow: '0 0 12px rgba(214, 227, 255, 0.25)'
 		}
 	}
 
@@ -670,32 +555,6 @@
 			}))
 			.filter((poi) => poi.distanceMeters <= Number(radiusMeters || 0))
 			.sort((left, right) => left.distanceMeters - right.distanceMeters)
-	}
-
-	function buildPointPosition(lng, lat) {
-		const { minLng, maxLng, minLat, maxLat } = mapBounds.value
-		const x = ((lng - minLng) / Math.max(maxLng - minLng, 0.000001)) * 100
-		const y = 100 - ((lat - minLat) / Math.max(maxLat - minLat, 0.000001)) * 100
-		return {
-			left: `${Math.min(Math.max(x, 4), 96)}%`,
-			top: `${Math.min(Math.max(y, 6), 94)}%`
-		}
-	}
-
-	function buildFloodStyle(centerLng, centerLat, radiusMeters, scale) {
-		const bounds = mapBounds.value
-		const position = buildPointPosition(centerLng, centerLat)
-		const safeCos = Math.max(Math.cos((Number(centerLat || DEFAULT_CENTER_LAT) * Math.PI) / 180), 0.2)
-		const lngDelta = (Number(radiusMeters || 0) * scale) / (111320 * safeCos)
-		const latDelta = (Number(radiusMeters || 0) * scale) / 110540
-		const width = ((lngDelta * 2) / Math.max(bounds.maxLng - bounds.minLng, 0.000001)) * 100
-		const height = ((latDelta * 2) / Math.max(bounds.maxLat - bounds.minLat, 0.000001)) * 100
-		return {
-			left: position.left,
-			top: position.top,
-			width: `${Math.min(Math.max(width, 14), 42)}%`,
-			height: `${Math.min(Math.max(height, 16), 40)}%`
-		}
 	}
 
 	function countPoiByTypes(typeList) {
@@ -768,7 +627,6 @@
 	}
 
 	function handleLogout() {
-		userMenuOpen.value = false
 		Modal.confirm({
 			title: '提示',
 			content: '确认退出当前用户？',
@@ -1013,11 +871,16 @@
 	}
 
 	.page-backdrop__map {
+		position: absolute;
+		inset: 0;
 		width: 100%;
 		height: 100%;
-		object-fit: cover;
-		opacity: 0.3;
-		filter: grayscale(1) contrast(1.25);
+		opacity: 0.55;
+		background:
+			radial-gradient(circle at 50% 40%, rgba(0, 142, 255, 0.18), transparent 28%),
+			radial-gradient(circle at 24% 30%, rgba(0, 228, 255, 0.1), transparent 18%),
+			radial-gradient(circle at 75% 28%, rgba(0, 228, 113, 0.08), transparent 18%);
+		filter: contrast(1.15);
 	}
 
 	.page-backdrop__gradient {
@@ -1058,6 +921,7 @@
 		gap: 24px;
 		height: 84px;
 		padding: 0 32px;
+        z-index: 999;
 		background: rgba(10, 25, 47, 0.82);
 		backdrop-filter: blur(16px);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -1159,6 +1023,15 @@
 		position: relative;
 		display: inline-flex;
 		align-items: center;
+		padding-bottom: 10px;
+		margin-bottom: -10px;
+	}
+
+	.header-user-shell:hover .header-user-popover {
+		opacity: 1;
+		visibility: visible;
+		transform: translateY(0);
+		pointer-events: auto;
 	}
 
 	.header-user {
@@ -1198,24 +1071,29 @@
 
 	.header-user-popover {
 		position: absolute;
-		top: calc(100% + 12px);
+		top: calc(100% + 2px);
 		right: 0;
 		z-index: 30;
+		opacity: 0;
+		visibility: hidden;
 		min-width: 232px;
 		padding: 10px;
 		border-radius: 18px;
 		border: 1px solid rgba(0, 163, 255, 0.22);
 		background: linear-gradient(180deg, rgba(10, 25, 47, 0.98), rgba(8, 22, 41, 0.94));
 		box-shadow: 0 22px 48px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transform: translateY(8px);
+		pointer-events: none;
+		transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
 	}
 
 	.header-user-popover::before {
 		content: '';
 		position: absolute;
-		top: -7px;
+		top: -5px;
 		right: 18px;
-		width: 12px;
-		height: 12px;
+		width: 10px;
+		height: 10px;
 		transform: rotate(45deg);
 		border-top: 1px solid rgba(0, 163, 255, 0.22);
 		border-left: 1px solid rgba(0, 163, 255, 0.22);
@@ -1664,6 +1542,8 @@
 		border-radius: 8px;
 		background: rgba(1, 14, 36, 0.78);
 		align-self: flex-start;
+        position: absolute;
+        z-index: 999;
 	}
 
 	.legend-block {
