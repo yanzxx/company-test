@@ -2,6 +2,7 @@ package vip.xiaonuo.biz.modular.emergency.service;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogQueryParam;
+import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogRecordParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyPoiQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyRadiusUpdateParam;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyDrillLogResult;
@@ -48,4 +49,9 @@ public interface EmergencyDrillService {
      * 获取演练日志
      */
     List<EmergencyDrillLogResult> logList(EmergencyLogQueryParam emergencyLogQueryParam);
+
+    /**
+     * 记录演练操作日志
+     */
+    void recordLog(EmergencyLogRecordParam emergencyLogRecordParam);
 }

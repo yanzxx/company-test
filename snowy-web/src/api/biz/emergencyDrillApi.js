@@ -28,5 +28,9 @@ export default {
 	// 获取演练日志
 	getLogList(data) {
 		return request('log/list', data, 'get')
+	},
+	// 记录演练日志
+	recordLog(data) {
+		return request('log/record', data)
 	}
 }

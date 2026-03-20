@@ -18,7 +18,7 @@
 			</div>
 
 			<div class="header-actions">
-				<button class="action-button action-button--ghost" type="button" @click="logDrawerOpen = true">
+				<button class="action-button action-button--ghost" type="button" @click="handleOpenLogDrawer()">
 					<HistoryOutlined />
 					<span>查看日志</span>
 				</button>
@@ -65,7 +65,40 @@
 					</h3>
 					<div class="weather-card">
 						<div class="weather-card__hero">
-							<div class="weather-card__icon">STORM</div>
+							<div class="weather-card__icon" aria-hidden="true">
+								<svg viewBox="0 0 80 80" class="weather-card__icon-svg">
+									<defs>
+										<linearGradient id="stormCloudGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+											<stop offset="0%" stop-color="#dff4ff" />
+											<stop offset="100%" stop-color="#71d8ff" />
+										</linearGradient>
+										<linearGradient id="stormRainGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+											<stop offset="0%" stop-color="#9cecff" />
+											<stop offset="100%" stop-color="#1fb6ff" />
+										</linearGradient>
+										<linearGradient id="stormBoltGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+											<stop offset="0%" stop-color="#ffe58f" />
+											<stop offset="100%" stop-color="#ffb703" />
+										</linearGradient>
+									</defs>
+									<path
+										d="M24 50c-8.4 0-15-6-15-13.8C9 29 14.7 24 21.8 23.2C24.1 16 30.5 11 38.1 11c8.6 0 15.7 5.8 17.6 13.8
+										c7.5.1 13.3 5.7 13.3 12.9C69 45 62.8 50 55.2 50H24Z"
+										fill="url(#stormCloudGradient)"
+										opacity="0.95"
+									/>
+									<path d="M30 58l-6 10" stroke="url(#stormRainGradient)" stroke-linecap="round" stroke-width="4" />
+									<path d="M42 58l-6 12" stroke="url(#stormRainGradient)" stroke-linecap="round" stroke-width="4" />
+									<path d="M54 58l-6 10" stroke="url(#stormRainGradient)" stroke-linecap="round" stroke-width="4" />
+									<path
+										d="M43 39H34l6-10-1 8h8L37 55l6-16Z"
+										fill="url(#stormBoltGradient)"
+										stroke="rgba(255,229,143,0.45)"
+										stroke-width="1.2"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</div>
 							<div class="weather-card__temp">{{ weatherSnapshot.temperature }}</div>
 							<div class="weather-card__label">{{ weatherSnapshot.label }}</div>
 						</div>
@@ -259,17 +292,64 @@
 
 		
 
-		<a-drawer v-model:open="logDrawerOpen" title="演练操作日志" placement="right" :width="480">
+		<a-drawer
+			v-model:visible="logDrawerOpen"
+			title="演练操作日志"
+			placement="right"
+			:width="520"
+			wrapClassName="emergency-log-drawer"
+			:mask-style="{ background: 'rgba(2, 8, 23, 0.58)', backdropFilter: 'blur(4px)' }"
+			:content-wrapper-style="{ boxShadow: '-18px 0 42px rgba(0, 0, 0, 0.34)' }"
+			:drawer-style="{
+				background: 'radial-gradient(circle at top left, rgba(0, 228, 255, 0.1), transparent 28%), linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98))',
+				borderLeft: '1px solid rgba(122, 218, 255, 0.14)',
+				color: 'var(--text-main)'
+			}"
+			:header-style="{ padding: '18px 20px 16px', background: 'transparent', borderBottom: '1px solid rgba(122, 218, 255, 0.12)' }"
+			:body-style="{ padding: '18px 20px 20px', background: 'transparent' }"
+		>
+			<div class="drawer-toolbar">
+				<div class="drawer-toolbar__summary">
+					<strong>{{ formattedLogs.length }}</strong>
+					<span>条记录</span>
+				</div>
+				<button class="drawer-toolbar__refresh" type="button" @click="refreshLogPanel()">
+					<SyncOutlined :spin="logLoading" />
+					<span>刷新日志</span>
+				</button>
+			</div>
+			<div class="drawer-filters">
+				<a-input v-model:value="logKeyword" allow-clear placeholder="搜索操作名称 / 描述 / 操作人" />
+				<div class="drawer-filter-tabs">
+					<button
+						v-for="item in logFilterOptions"
+						:key="item.key"
+						class="drawer-filter-tab"
+						:class="{ 'drawer-filter-tab--active': activeLogFilter === item.key }"
+						type="button"
+						@click="activeLogFilter = item.key"
+					>
+						<span>{{ item.label }}</span>
+						<em>{{ item.count }}</em>
+					</button>
+				</div>
+			</div>
 			<div class="drawer-list">
-				<div v-for="item in formattedLogs" :key="item.id" class="drawer-item">
+				<div v-for="item in filteredLogs" :key="item.id" class="drawer-item">
 					<div class="drawer-item__head">
-						<strong>{{ item.title }}</strong>
+						<div class="drawer-item__title">
+							<span class="drawer-item__tag" :class="`drawer-item__tag--${item.group}`">{{ item.groupLabel }}</span>
+							<strong>{{ item.title }}</strong>
+						</div>
 						<span>{{ item.time }}</span>
 					</div>
 					<p>{{ item.detail }}</p>
-					<div class="drawer-item__foot">{{ item.operator }}</div>
+					<div class="drawer-item__foot">
+						<span>{{ item.operator }}</span>
+						<span>{{ item.typeLabel }}</span>
+					</div>
 				</div>
-				<div v-if="!formattedLogs.length" class="empty-panel">暂无演练日志。</div>
+				<div v-if="!filteredLogs.length" class="empty-panel">暂无匹配的演练日志。</div>
 			</div>
 		</a-drawer>
 	</div>
@@ -312,8 +392,17 @@
 	const DEFAULT_CENTER_LNG = 113.947321
 	const DEFAULT_CENTER_LAT = 22.543211
 	const DEFAULT_RADIUS_METERS = 1500
-	const MAX_SIGNAL_COUNT = 8
+	const MAX_SIGNAL_COUNT = 50
+	const LOG_FETCH_LIMIT = 50
 	const POLLING_INTERVAL = 10000
+	const LOG_FILTER_ITEMS = [
+		{ key: 'all', label: '全部' },
+		{ key: 'manual', label: '调度操作' },
+		{ key: 'signal', label: '灾情推演' },
+		{ key: 'query', label: '查询记录' },
+		{ key: 'system', label: '系统事件' }
+	]
+	const WARNING_FEED_EXCLUDED_OPERATION_TYPES = ['DASHBOARD_REFRESH', 'AI_SUGGESTION_ACCEPT']
 
 	const weatherSnapshot = {
 		temperature: '22°C',
@@ -389,6 +478,9 @@
 	const loading = ref(false)
 	const updating = ref(false)
 	const logDrawerOpen = ref(false)
+	const logLoading = ref(false)
+	const logKeyword = ref('')
+	const activeLogFilter = ref('all')
 	const streamMode = ref('connecting')
 	const streamHint = ref('正在连接实时推送')
 	const now = ref(dayjs())
@@ -531,35 +623,64 @@
 	])
 
 	const formattedLogs = computed(() =>
-		logList.value.map((item) => ({
-			id: item.id,
-			title: item.operationName || '系统事件',
-			time: formatDateTime(item.createTime),
-			detail: item.detail || '暂无详细描述',
-			operator: item.operatorName || '系统'
-		}))
+		logList.value.map((item) => {
+			const categoryMeta = resolveLogCategoryMeta(item.operationType, item.operationName, item.detail)
+			return {
+				id: item.id,
+				title: item.operationName || '系统事件',
+				time: formatDateTime(item.createTime),
+				detail: item.detail || '暂无详细描述',
+				operator: item.operatorName || '系统',
+				group: categoryMeta.group,
+				groupLabel: categoryMeta.groupLabel,
+				typeLabel: categoryMeta.typeLabel,
+				searchText: `${item.operationName || ''} ${item.detail || ''} ${item.operatorName || ''} ${categoryMeta.groupLabel} ${categoryMeta.typeLabel}`.toLowerCase()
+			}
+		})
 	)
+	const filteredLogs = computed(() => {
+		const keyword = logKeyword.value.trim().toLowerCase()
+		return formattedLogs.value.filter((item) => {
+			const matchesFilter = activeLogFilter.value === 'all' ? true : item.group === activeLogFilter.value
+			const matchesKeyword = keyword ? item.searchText.includes(keyword) : true
+			return matchesFilter && matchesKeyword
+		})
+	})
+	const logFilterOptions = computed(() => {
+		const countMap = formattedLogs.value.reduce((result, item) => {
+			result[item.group] = Number(result[item.group] || 0) + 1
+			return result
+		}, {})
+		return LOG_FILTER_ITEMS.map((item) => ({
+			...item,
+			count: item.key === 'all' ? formattedLogs.value.length : Number(countMap[item.key] || 0)
+		}))
+	})
 
 	const warningList = computed(() => {
 		const entries = []
-		if (latestSignal.value) {
-			entries.push({
-				id: latestSignal.value.signalId || 'latest-signal',
-				...buildWarningMeta(latestSignal.value.signalName, latestSignal.value.message, latestSignal.value.signalType),
-				time: formatTime(latestSignal.value.signalTime),
-				text: latestSignal.value.message || latestSignal.value.signalName || '灾情信号更新'
-			})
+		const seenKeys = new Set()
+		const pushEntry = (entry) => {
+			if (!entry) {
+				return
+			}
+			const dedupeKey = `${entry.time}|${entry.text}|${entry.label}`
+			if (seenKeys.has(dedupeKey)) {
+				return
+			}
+			seenKeys.add(dedupeKey)
+			entries.push(entry)
 		}
-		logList.value.slice(0, 5).forEach((item) => {
-			const text = item.detail || item.operationName || '系统事件'
-			entries.push({
-				id: item.id,
-				...buildWarningMeta(item.operationName, text, item.operationType),
-				time: formatTime(item.createTime),
-				text
-			})
+		signalFeed.value.forEach((item, index) => {
+			pushEntry(createWarningEntryFromSignal(item, `signal-${index}`))
 		})
-		return entries.slice(0, 6)
+		if (!signalFeed.value.length && latestSignal.value) {
+			pushEntry(createWarningEntryFromSignal(latestSignal.value, 'latest-signal'))
+		}
+		logList.value.filter((item) => isWarningFeedLog(item)).forEach((item, index) => {
+			pushEntry(createWarningEntryFromLog(item, `log-${index}`))
+		})
+		return entries.slice(0, 10)
 	})
 
 	const aiSuggestion = computed(() => {
@@ -600,6 +721,72 @@
 			return { level: 'orange', label: '橙色预警' }
 		}
 		return { level: 'yellow', label: '黄色预警' }
+	}
+
+	function resolveLogCategoryMeta(operationType = '', title = '', detail = '') {
+		const content = `${operationType || ''} ${title || ''} ${detail || ''}`
+		if (/DASHBOARD_REFRESH|RADIUS_UPDATE|MANUAL_RADIUS_UPDATE|AI_SUGGESTION_ACCEPT/.test(content)) {
+			return { group: 'manual', groupLabel: '调度操作', typeLabel: '人工处置' }
+		}
+		if (/SYSTEM_SIGNAL|NEW_LEAK_POINT|RISK_AGGRAVATED/.test(content) || /漏水点|险情加重|灾情/.test(content)) {
+			return { group: 'signal', groupLabel: '灾情推演', typeLabel: '态势推送' }
+		}
+		if (/POI_QUERY|QUERY/.test(content) || /查询/.test(content)) {
+			return { group: 'query', groupLabel: '查询记录', typeLabel: '检索操作' }
+		}
+		return { group: 'system', groupLabel: '系统事件', typeLabel: '系统日志' }
+	}
+
+	function isWarningFeedLog(logItem) {
+		if (!logItem?.operationType) {
+			return true
+		}
+		return !WARNING_FEED_EXCLUDED_OPERATION_TYPES.includes(logItem.operationType)
+	}
+
+	function createWarningEntryFromSignal(signal, fallbackId) {
+		if (!signal) {
+			return null
+		}
+		const text = signal.message || signal.signalName || '灾情信号更新'
+		return {
+			id: signal.signalId || fallbackId,
+			...buildWarningMeta(signal.signalName, text, signal.signalType),
+			time: formatTime(signal.signalTime),
+			text
+		}
+	}
+
+	async function recordOperationLog(payload, options = {}) {
+		const { refreshLogs = false } = options
+		try {
+			await emergencyDrillApi.recordLog(payload)
+			if (refreshLogs || logDrawerOpen.value) {
+				await loadLogList(true)
+			}
+		} catch (error) {
+			// 日志记录失败不阻塞主流程
+		}
+	}
+
+	function handleOpenLogDrawer() {
+		logDrawerOpen.value = true
+		logKeyword.value = ''
+		activeLogFilter.value = 'all'
+		refreshLogPanel(false)
+	}
+
+	function createWarningEntryFromLog(logItem, fallbackId) {
+		if (!logItem) {
+			return null
+		}
+		const text = logItem.detail || logItem.operationName || '系统事件'
+		return {
+			id: logItem.id || fallbackId,
+			...buildWarningMeta(logItem.operationName, text, logItem.operationType),
+			time: formatTime(logItem.createTime),
+			text
+		}
 	}
 
 	function appendSignal(signal) {
@@ -686,12 +873,24 @@
 
 	async function loadLogList(silent = false) {
 		try {
-			const data = await emergencyDrillApi.getLogList({ limit: 12 })
+			const data = await emergencyDrillApi.getLogList({ limit: LOG_FETCH_LIMIT })
 			logList.value = Array.isArray(data) ? data : []
 		} catch (error) {
 			if (!silent) {
 				message.error('加载演练日志失败')
 			}
+		}
+	}
+
+	async function refreshLogPanel(showMessage = true) {
+		logLoading.value = true
+		try {
+			await loadLogList(true)
+			if (showMessage) {
+				message.success('操作日志已刷新')
+			}
+		} finally {
+			logLoading.value = false
 		}
 	}
 
@@ -711,10 +910,19 @@
 		try {
 			const [stateData, logData] = await Promise.all([
 				emergencyDrillApi.getDisasterState(),
-				emergencyDrillApi.getLogList({ limit: 12 })
+				emergencyDrillApi.getLogList({ limit: LOG_FETCH_LIMIT })
 			])
 			applyScenarioState(stateData)
 			logList.value = Array.isArray(logData) ? logData : []
+			await recordOperationLog(
+				{
+					operationType: 'DASHBOARD_REFRESH',
+					operationName: '刷新应急态势',
+					detail: `手动刷新首页态势，当前受灾半径 ${Math.round(Number(stateData?.radiusMeters || scenarioState.value.radiusMeters || 0))} 米，圈内设施 ${Array.isArray(stateData?.affectedPoiList) ? stateData.affectedPoiList.length : scenarioPoiList.value.length} 个。`
+				},
+				{ refreshLogs: true }
+			)
+			message.success('态势数据已刷新')
 		} finally {
 			loading.value = false
 		}
@@ -726,7 +934,7 @@
 			const [poiData, stateData, logData] = await Promise.all([
 				emergencyDrillApi.getMockPoiList(),
 				emergencyDrillApi.getDisasterState(),
-				emergencyDrillApi.getLogList({ limit: 12 })
+				emergencyDrillApi.getLogList({ limit: LOG_FETCH_LIMIT })
 			])
 			poiList.value = Array.isArray(poiData) ? poiData : []
 			logList.value = Array.isArray(logData) ? logData : []
@@ -761,9 +969,17 @@
 		}
 	}
 
-	function acceptSuggestion() {
+	async function acceptSuggestion() {
 		const increment = responseLevel.value.key === 'critical' ? 220 : 120
 		radiusDraft.value = Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS) + increment
+		await recordOperationLog(
+			{
+				operationType: 'AI_SUGGESTION_ACCEPT',
+				operationName: '采纳AI建议',
+				detail: `采纳AI建议，已将待更新受灾半径预设为 ${Math.round(Number(radiusDraft.value))} 米。`
+			},
+			{ refreshLogs: true }
+		)
 		message.info(`已采纳 AI 建议，受灾半径待更新为 ${Math.round(Number(radiusDraft.value))} 米`)
 	}
 
@@ -1326,11 +1542,23 @@
 	}
 
 	.weather-card__icon {
-		font-family: 'Space Grotesk', sans-serif;
-		font-size: 18px;
-		font-weight: 700;
-		letter-spacing: 0.18em;
-		color: var(--accent);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 72px;
+		height: 72px;
+		border-radius: 20px;
+		background:
+			radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), transparent 40%),
+			linear-gradient(180deg, rgba(0, 163, 255, 0.18), rgba(0, 163, 255, 0.06));
+		box-shadow: inset 0 0 0 1px rgba(159, 232, 255, 0.16), 0 12px 26px rgba(0, 110, 190, 0.18);
+	}
+
+	.weather-card__icon-svg {
+		width: 58px;
+		height: 58px;
+		filter: drop-shadow(0 0 10px rgba(78, 206, 255, 0.24));
+		animation: weatherStormFloat 3.4s ease-in-out infinite;
 	}
 
 	.weather-card__temp {
@@ -1345,6 +1573,16 @@
 		margin-top: 6px;
 		font-size: 11px;
 		color: rgba(0, 163, 255, 0.7);
+	}
+
+	@keyframes weatherStormFloat {
+		0%,
+		100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-3px);
+		}
 	}
 
 	.weather-card__stats {
@@ -2048,47 +2286,237 @@
 		color: #8ee7ff;
 	}
 
+	.drawer-filters :deep(.ant-input-affix-wrapper),
+	.drawer-filters :deep(.ant-input) {
+		background: rgba(8, 20, 38, 0.9);
+		border-color: rgba(122, 218, 255, 0.16);
+		color: #e6f4ff;
+		box-shadow: none;
+	}
+
+	.drawer-filters :deep(.ant-input-affix-wrapper:hover),
+	.drawer-filters :deep(.ant-input-affix-wrapper-focused),
+	.drawer-filters :deep(.ant-input:hover),
+	.drawer-filters :deep(.ant-input:focus) {
+		border-color: rgba(0, 228, 255, 0.34);
+	}
+
+	.drawer-filters :deep(.ant-input::placeholder) {
+		color: rgba(214, 227, 255, 0.36);
+	}
+
+	.drawer-filters :deep(.ant-input-clear-icon),
+	.drawer-filters :deep(.ant-input-prefix) {
+		color: rgba(142, 231, 255, 0.66);
+	}
+
+	.drawer-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 14px;
+	}
+
+	.drawer-toolbar__summary {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+
+	.drawer-toolbar__summary strong {
+		font-family: 'Space Grotesk', sans-serif;
+		font-size: 22px;
+		color: #f3fbff;
+	}
+
+	.drawer-toolbar__summary span {
+		font-size: 12px;
+		color: rgba(214, 227, 255, 0.56);
+	}
+
+	.drawer-toolbar__refresh {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		border: 1px solid rgba(122, 218, 255, 0.16);
+		border-radius: 999px;
+		background: rgba(0, 163, 255, 0.12);
+		color: #9fe8ff;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.2s ease, color 0.2s ease;
+	}
+
+	.drawer-toolbar__refresh:hover {
+		background: rgba(0, 163, 255, 0.18);
+		color: #ffffff;
+	}
+
+	.drawer-filters {
+		display: grid;
+		gap: 12px;
+		margin-bottom: 16px;
+	}
+
+	.drawer-filter-tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.drawer-filter-tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 10px;
+		border: 1px solid rgba(122, 218, 255, 0.14);
+		border-radius: 999px;
+		background: rgba(8, 20, 38, 0.88);
+		color: rgba(214, 227, 255, 0.72);
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.drawer-filter-tab:hover {
+		border-color: rgba(0, 228, 255, 0.22);
+		color: #f3fbff;
+		transform: translateY(-1px);
+	}
+
+	.drawer-filter-tab em {
+		font-style: normal;
+		font-family: 'Space Grotesk', sans-serif;
+		font-size: 11px;
+		color: rgba(214, 227, 255, 0.4);
+	}
+
+	.drawer-filter-tab--active {
+		border-color: rgba(0, 228, 255, 0.28);
+		background: rgba(0, 163, 255, 0.14);
+		color: #f3fbff;
+		box-shadow: 0 10px 22px rgba(0, 163, 255, 0.12);
+	}
+
+	.drawer-filter-tab--active em {
+		color: #9fe8ff;
+	}
+
 	.drawer-list {
 		display: grid;
 		gap: 12px;
 	}
 
 	.drawer-item {
+		position: relative;
+		overflow: hidden;
 		padding: 14px 16px;
-		border-radius: 8px;
-		background: #f5f7fb;
+		border-radius: 12px;
+		background:
+			linear-gradient(180deg, rgba(12, 28, 52, 0.92), rgba(7, 18, 34, 0.86)),
+			rgba(8, 20, 38, 0.82);
+		border: 1px solid rgba(122, 218, 255, 0.12);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 14px 28px rgba(0, 0, 0, 0.16);
+		transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.drawer-item::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 1px;
+		background: linear-gradient(90deg, rgba(0, 228, 255, 0), rgba(0, 228, 255, 0.42), rgba(0, 228, 255, 0));
+		opacity: 0.82;
+	}
+
+	.drawer-item:hover {
+		transform: translateY(-2px);
+		border-color: rgba(0, 228, 255, 0.22);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 18px 34px rgba(0, 0, 0, 0.22);
 	}
 
 	.drawer-item__head {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: space-between;
 		gap: 12px;
-		margin-bottom: 8px;
+		margin-bottom: 10px;
+	}
+
+	.drawer-item__title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.drawer-item__head strong {
 		font-size: 14px;
-		color: #182230;
+		color: #f3fbff;
+	}
+
+	.drawer-item__tag {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+	}
+
+	.drawer-item__tag--manual {
+		background: rgba(14, 165, 233, 0.16);
+		color: #7dd3fc;
+	}
+
+	.drawer-item__tag--signal {
+		background: rgba(249, 115, 22, 0.16);
+		color: #fdba74;
+	}
+
+	.drawer-item__tag--query {
+		background: rgba(168, 85, 247, 0.16);
+		color: #d8b4fe;
+	}
+
+	.drawer-item__tag--system {
+		background: rgba(100, 116, 139, 0.16);
+		color: #cbd5e1;
 	}
 
 	.drawer-item__head span,
 	.drawer-item__foot {
 		font-size: 12px;
-		color: #6b7280;
+		color: rgba(214, 227, 255, 0.5);
 	}
 
 	.drawer-item p {
-		margin: 0 0 8px;
+		margin: 0 0 10px;
 		font-size: 13px;
 		line-height: 1.6;
-		color: #364152;
+		color: rgba(230, 244, 255, 0.82);
+	}
+
+	.drawer-item__foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
 	}
 
 	.empty-panel {
 		display: grid;
 		place-items: center;
 		min-height: 140px;
+		border: 1px dashed rgba(122, 218, 255, 0.18);
+		border-radius: 12px;
+		background: rgba(8, 20, 38, 0.5);
 		font-size: 13px;
 		color: rgba(214, 227, 255, 0.56);
 	}
@@ -2166,6 +2594,112 @@
 		100% {
 			transform: scale(1.3);
 			opacity: 0;
+		}
+	}
+</style>
+
+<style lang="less">
+	.emergency-log-drawer {
+		.ant-drawer-mask {
+			background: rgba(2, 8, 23, 0.58);
+			backdrop-filter: blur(4px);
+		}
+
+		.ant-drawer-content-wrapper {
+			box-shadow: -18px 0 42px rgba(0, 0, 0, 0.34);
+		}
+
+		.ant-drawer-content {
+			position: relative;
+			background:
+				radial-gradient(circle at top left, rgba(0, 228, 255, 0.1), transparent 28%),
+				linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
+			border-left: 1px solid rgba(122, 218, 255, 0.14);
+			color: #d6e3ff;
+		}
+
+		.ant-drawer-content::before {
+			content: '';
+			position: absolute;
+			inset: 0;
+			background:
+				linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
+				radial-gradient(circle at top right, rgba(0, 163, 255, 0.08), transparent 26%);
+			pointer-events: none;
+		}
+
+		.ant-drawer-header {
+			position: relative;
+			z-index: 1;
+			padding: 18px 20px 16px;
+			background: transparent;
+			border-bottom: 1px solid rgba(122, 218, 255, 0.12);
+		}
+
+		.ant-drawer-header-title {
+			align-items: center;
+		}
+
+		.ant-drawer-title {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			font-size: 15px;
+			font-weight: 700;
+			letter-spacing: 0.08em;
+			color: #f3fbff;
+		}
+
+		.ant-drawer-title::before {
+			content: '';
+			width: 7px;
+			height: 7px;
+			border-radius: 999px;
+			background: #00e4ff;
+			box-shadow: 0 0 12px rgba(0, 228, 255, 0.72);
+			flex: 0 0 auto;
+		}
+
+		.ant-drawer-close {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 32px;
+			height: 32px;
+			margin-inline-end: 0;
+			border: 1px solid rgba(122, 218, 255, 0.16);
+			border-radius: 999px;
+			background: rgba(9, 23, 42, 0.72);
+			color: rgba(214, 227, 255, 0.72);
+			transition: all 0.2s ease;
+		}
+
+		.ant-drawer-close:hover {
+			border-color: rgba(0, 228, 255, 0.3);
+			background: rgba(0, 163, 255, 0.14);
+			color: #ffffff;
+		}
+
+		.ant-drawer-body {
+			position: relative;
+			z-index: 1;
+			padding: 18px 20px 20px;
+			background: transparent;
+			scrollbar-width: thin;
+			scrollbar-color: rgba(0, 163, 255, 0.28) rgba(255, 255, 255, 0.04);
+		}
+
+		.ant-drawer-body::-webkit-scrollbar {
+			width: 6px;
+		}
+
+		.ant-drawer-body::-webkit-scrollbar-track {
+			background: rgba(255, 255, 255, 0.04);
+		}
+
+		.ant-drawer-body::-webkit-scrollbar-thumb {
+			background: rgba(0, 163, 255, 0.28);
+			border-radius: 999px;
 		}
 	}
 </style>

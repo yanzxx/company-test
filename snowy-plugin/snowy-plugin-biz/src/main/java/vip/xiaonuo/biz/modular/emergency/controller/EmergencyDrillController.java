@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogQueryParam;
+import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogRecordParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyPoiQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyRadiusUpdateParam;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyDrillLogResult;
@@ -100,5 +101,16 @@ public class EmergencyDrillController {
     @GetMapping("/biz/emergency/drill/log/list")
     public CommonResult<List<EmergencyDrillLogResult>> logList(@Valid EmergencyLogQueryParam emergencyLogQueryParam) {
         return CommonResult.data(emergencyDrillService.logList(emergencyLogQueryParam));
+    }
+
+    /**
+     * 记录演练操作日志
+     */
+    @ApiOperationSupport(order = 7)
+    @ApiOperation("记录演练操作日志")
+    @PostMapping("/biz/emergency/drill/log/record")
+    public CommonResult<Void> recordLog(@RequestBody @Valid EmergencyLogRecordParam emergencyLogRecordParam) {
+        emergencyDrillService.recordLog(emergencyLogRecordParam);
+        return CommonResult.ok();
     }
 }

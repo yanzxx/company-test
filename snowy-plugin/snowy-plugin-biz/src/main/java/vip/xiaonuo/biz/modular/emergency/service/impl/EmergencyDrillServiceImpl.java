@@ -12,6 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vip.xiaonuo.auth.core.pojo.SaBaseLoginUser;
 import vip.xiaonuo.auth.core.util.StpLoginUserUtil;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogQueryParam;
+import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogRecordParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyPoiQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyRadiusUpdateParam;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyDrillLogResult;
@@ -220,6 +221,13 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
             }
             return resultList;
         }
+    }
+
+    @Override
+    public void recordLog(EmergencyLogRecordParam emergencyLogRecordParam) {
+        String detail = StrUtil.blankToDefault(StrUtil.trim(emergencyLogRecordParam.getDetail()), "无补充说明");
+        appendCurrentUserLog(StrUtil.trim(emergencyLogRecordParam.getOperationType()),
+                StrUtil.trim(emergencyLogRecordParam.getOperationName()), detail);
     }
 
     private void safeGenerateSignal() {
