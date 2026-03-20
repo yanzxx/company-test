@@ -157,6 +157,14 @@
 			type: Array,
 			default: () => []
 		},
+		signalCounter: {
+			type: Number,
+			default: 0
+		},
+		latestSignal: {
+			type: Object,
+			default: () => null
+		},
 		levelKey: {
 			type: String,
 			default: 'monitor'
@@ -178,7 +186,6 @@
 	const safeCenterLat = computed(() => (Number.isFinite(Number(props.centerLat)) ? Number(props.centerLat) : DEFAULT_CENTER[1]))
 	const safeRadiusMeters = computed(() => Math.max(Number(props.radiusMeters || 0), 200))
 	const floodAnimationTick = ref(0)
-	const centerCoordinate = computed(() => [safeCenterLng.value, safeCenterLat.value])
 	const affectedPoiIdSet = computed(() => new Set(props.affectedPoiList.map((item) => item.id)))
 	const displayLeakMarkers = computed(() =>
 		props.leakPointList
@@ -192,6 +199,7 @@
 				lat: Number(item.lat)
 			}))
 	)
+	const latestSignalType = computed(() => props.latestSignal?.signalType || '')
 	const floodAnimationState = computed(() => {
 		const phase = floodAnimationTick.value * 0.42
 		return {
@@ -221,6 +229,142 @@
 				})
 			return matchedList.length ? [matchedList[0]] : []
 		})
+	)
+	const floodScenarioFactors = computed(() => {
+		const signalIndex = Math.max(Number(props.signalCounter || 0), 0)
+		const leakCount = displayLeakMarkers.value.length
+		const affectedCount = props.affectedPoiList.length
+		const signalWave = (Math.sin(signalIndex * 0.78 + leakCount * 0.33) + 1) / 2
+		const clusterWave = (Math.cos(signalIndex * 0.46 + affectedCount * 0.18) + 1) / 2
+
+		let rangeBoost = 1 + (signalWave - 0.5) * 0.18 + Math.min(leakCount, 6) * 0.022 + Math.min(affectedCount, 24) * 0.006
+		let depthBoost = 1 + (clusterWave - 0.5) * 0.24 + Math.min(leakCount, 6) * 0.04 + Math.min(affectedCount, 24) * 0.008
+
+		if (latestSignalType.value === 'RISK_AGGRAVATED') {
+			rangeBoost += 0.09
+			depthBoost += 0.12
+		} else if (latestSignalType.value === 'NEW_LEAK_POINT') {
+			rangeBoost += 0.03
+			depthBoost += 0.16
+		} else if (latestSignalType.value === 'MANUAL_RADIUS_UPDATE') {
+			rangeBoost += 0.05
+			depthBoost += 0.06
+		}
+
+		return {
+			signalWave,
+			clusterWave,
+			primaryRadiusScale: clamp(rangeBoost + 0.04, 0.94, 1.32),
+			secondaryRadiusScale: clamp(rangeBoost - 0.06, 0.88, 1.22),
+			primaryDepthScale: clamp(depthBoost + 0.06, 0.92, 1.32),
+			secondaryDepthScale: clamp(depthBoost - 0.08, 0.85, 1.18),
+			leakRadiusScale: clamp(0.82 + leakCount * 0.07 + signalWave * 0.1, 0.82, 1.18),
+			leakDepthScale: clamp(
+				0.96 + leakCount * 0.08 + clusterWave * 0.12 + (latestSignalType.value === 'NEW_LEAK_POINT' ? 0.18 : 0),
+				0.95,
+				1.42
+			)
+		}
+	})
+	const floodPocketDescriptors = computed(() => {
+		const scenarioFactors = floodScenarioFactors.value
+		const primarySeedList = resolveFloodSeedList({
+			primaryFirst: priorityInfrastructureList.value.filter((item) => item.isAffected),
+			fallback: props.affectedPoiList,
+			limit: 3
+		})
+		const secondarySeedList = resolveFloodSeedList({
+			fallback: props.affectedPoiList.filter((item) => !primarySeedList.some((seed) => seed.id === item.id)),
+			limit: 4
+		})
+		const descriptorList = []
+
+		primarySeedList.forEach((item, index) => {
+			const depthMeters = clamp(
+				(1.72 - index * 0.26 + scenarioFactors.signalWave * 0.22 + (index === 0 ? scenarioFactors.clusterWave * 0.24 : 0)) *
+					scenarioFactors.primaryDepthScale,
+				0.95,
+				2.1
+			)
+			descriptorList.push({
+				centerLng: Number(item.lng),
+				centerLat: Number(item.lat),
+				radiusX: clamp((safeRadiusMeters.value * (0.16 - index * 0.014)) * scenarioFactors.primaryRadiusScale, 180, 390),
+				radiusY: clamp((safeRadiusMeters.value * (0.108 - index * 0.012)) * (scenarioFactors.primaryRadiusScale - 0.04), 120, 260),
+				rotation: 18 + index * 34 + scenarioFactors.signalWave * 16,
+				zone: 'primary',
+				seedId: item.id,
+				depthMeters,
+				depthLevel: resolveFloodDepthLevel(depthMeters),
+				phaseOffset: index * 0.85,
+				pulseScale: 0.11
+			})
+		})
+
+		secondarySeedList.forEach((item, index) => {
+			const depthMeters = clamp(
+				(0.78 - index * 0.12 + scenarioFactors.clusterWave * 0.14 + (index === 0 ? scenarioFactors.signalWave * 0.08 : 0)) *
+					scenarioFactors.secondaryDepthScale,
+				0.35,
+				1.28
+			)
+			descriptorList.push({
+				centerLng: Number(item.lng),
+				centerLat: Number(item.lat),
+				radiusX: clamp((safeRadiusMeters.value * (0.1 - index * 0.01)) * scenarioFactors.secondaryRadiusScale, 105, 250),
+				radiusY: clamp((safeRadiusMeters.value * (0.075 - index * 0.008)) * (scenarioFactors.secondaryRadiusScale - 0.03), 78, 180),
+				rotation: 42 + index * 29 + scenarioFactors.clusterWave * 12,
+				zone: 'secondary',
+				seedId: item.id,
+				depthMeters,
+				depthLevel: resolveFloodDepthLevel(depthMeters),
+				phaseOffset: 1.4 + index * 0.68,
+				pulseScale: 0.08
+			})
+		})
+
+		displayLeakMarkers.value.slice(0, 2).forEach((item, index) => {
+			const depthMeters = clamp(
+				(1.02 + displayLeakMarkers.value.length * 0.08 - index * 0.1 + scenarioFactors.signalWave * 0.24) *
+					scenarioFactors.leakDepthScale,
+				0.85,
+				2.1
+			)
+			descriptorList.push({
+				centerLng: Number(item.lng),
+				centerLat: Number(item.lat),
+				radiusX: clamp((104 + displayLeakMarkers.value.length * 18 - index * 12) * scenarioFactors.leakRadiusScale, 92, 240),
+				radiusY: clamp((76 + displayLeakMarkers.value.length * 12 - index * 10) * (scenarioFactors.leakRadiusScale - 0.04), 70, 190),
+				rotation: 12 + index * 41 + scenarioFactors.signalWave * 24,
+				zone: 'leak',
+				seedId: item.id,
+				depthMeters,
+				depthLevel: resolveFloodDepthLevel(depthMeters),
+				phaseOffset: 2.1 + index * 0.72,
+				pulseScale: 0.06
+			})
+		})
+
+		if (!descriptorList.length) {
+			descriptorList.push({
+				centerLng: safeCenterLng.value,
+				centerLat: safeCenterLat.value,
+				radiusX: clamp(safeRadiusMeters.value * 0.16, 180, 320),
+				radiusY: clamp(safeRadiusMeters.value * 0.1, 120, 220),
+				rotation: 20,
+				zone: 'primary',
+				seedId: 'fallback-center',
+				depthMeters: 1.2,
+				depthLevel: resolveFloodDepthLevel(1.2),
+				phaseOffset: 0,
+				pulseScale: 0.1
+			})
+		}
+
+		return descriptorList
+	})
+	const centerCoordinate = computed(() =>
+		calculateDisasterCenterCoordinate(floodPocketDescriptors.value, safeRadiusMeters.value, [safeCenterLng.value, safeCenterLat.value])
 	)
 
 	const levelLabel = computed(() => {
@@ -328,7 +472,7 @@
 	const mapBbox = computed(() => {
 		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.68, 320, 980)
 		const focusPoiList = props.affectedPoiList.length ? props.affectedPoiList : priorityInfrastructureList.value
-		const pointList = collectBoundsPoints(safeCenterLng.value, safeCenterLat.value, focusRadiusMeters, focusPoiList)
+		const pointList = collectBoundsPoints(centerCoordinate.value[0], centerCoordinate.value[1], focusRadiusMeters, focusPoiList)
 		const lngList = pointList.map((item) => item[0])
 		const latList = pointList.map((item) => item[1])
 		const minLng = Math.min(...lngList)
@@ -345,87 +489,28 @@
 
 	const floodZoneGeojson = computed(() => {
 		const animationPhase = floodAnimationTick.value * 0.36
-		const featureList = []
-		const primarySeedList = resolveFloodSeedList({
-			primaryFirst: priorityInfrastructureList.value.filter((item) => item.isAffected),
-			fallback: props.affectedPoiList,
-			limit: 3
-		})
-		const secondarySeedList = resolveFloodSeedList({
-			fallback: props.affectedPoiList.filter((item) => !primarySeedList.some((seed) => seed.id === item.id)),
-			limit: 4
-		})
-
-		primarySeedList.forEach((item, index) => {
-			const radiusX = clamp(safeRadiusMeters.value * 0.17 - index * 24, 180, 360)
-			const radiusY = clamp(safeRadiusMeters.value * 0.11 - index * 18, 120, 240)
-			const rotation = 18 + index * 34
-			const depthMeters = clamp(1.85 - index * 0.32, 0.95, 2.1)
-			const zone = createFloodPocketFeature(
-				item.lng,
-				item.lat,
-				radiusX,
-				radiusY,
-				rotation,
-				{
-					zone: 'primary',
-					seedId: item.id,
-					depthMeters,
-					depthLevel: resolveFloodDepthLevel(depthMeters)
-				},
-				48,
-				animationPhase + index * 0.85,
-				0.11
-			)
-			if (zone) {
-				featureList.push(zone)
-			}
-		})
-
-		secondarySeedList.forEach((item, index) => {
-			const radiusX = clamp(safeRadiusMeters.value * 0.11 - index * 12, 110, 220)
-			const radiusY = clamp(safeRadiusMeters.value * 0.08 - index * 10, 80, 170)
-			const rotation = 42 + index * 29
-			const depthMeters = clamp(1.05 - index * 0.18, 0.35, 1.1)
-			const zone = createFloodPocketFeature(
-				item.lng,
-				item.lat,
-				radiusX,
-				radiusY,
-				rotation,
-				{
-					zone: 'secondary',
-					seedId: item.id,
-					depthMeters,
-					depthLevel: resolveFloodDepthLevel(depthMeters)
-				},
-				48,
-				animationPhase + 1.4 + index * 0.68,
-				0.08
-			)
-			if (zone) {
-				featureList.push(zone)
-			}
-		})
-
-		if (!featureList.length) {
-			const fallbackZone = createFloodPocketFeature(
-				safeCenterLng.value,
-				safeCenterLat.value,
-				clamp(safeRadiusMeters.value * 0.16, 180, 320),
-				clamp(safeRadiusMeters.value * 0.1, 120, 220),
-				20,
-				{ zone: 'primary', seedId: 'fallback-center', depthMeters: 1.2, depthLevel: resolveFloodDepthLevel(1.2) },
-				48,
-				animationPhase,
-				0.1
-			)
-			if (fallbackZone) {
-				featureList.push(fallbackZone)
-			}
-		}
-
-		return createFeatureCollection(featureList)
+		return createFeatureCollection(
+			floodPocketDescriptors.value
+				.map((item) =>
+					createFloodPocketFeature(
+						item.centerLng,
+						item.centerLat,
+						item.radiusX,
+						item.radiusY,
+						item.rotation,
+						{
+							zone: item.zone,
+							seedId: item.seedId,
+							depthMeters: item.depthMeters,
+							depthLevel: item.depthLevel
+						},
+						48,
+						animationPhase + item.phaseOffset,
+						item.pulseScale
+					)
+				)
+				.filter(Boolean)
+		)
 	})
 
 	const centerPointGeojson = computed(() =>
@@ -469,6 +554,53 @@
 			type: 'FeatureCollection',
 			features: Array.isArray(features) ? features : EMPTY_COLLECTION.features
 		}
+	}
+
+	function calculateDisasterCenterCoordinate(descriptorList, radiusMeters, fallbackCenter) {
+		const fallbackCoordinate = Array.isArray(fallbackCenter) && fallbackCenter.length >= 2 ? fallbackCenter : DEFAULT_CENTER
+		const validDescriptorList = (Array.isArray(descriptorList) ? descriptorList : []).filter((item) =>
+			isValidCoordinate(item?.centerLng, item?.centerLat)
+		)
+		if (!validDescriptorList.length) {
+			return fallbackCoordinate
+		}
+		if (validDescriptorList.length === 1) {
+			return [Number(validDescriptorList[0].centerLng), Number(validDescriptorList[0].centerLat)]
+		}
+
+		const concentrationDistance = clamp(Number(radiusMeters) * 0.28, 180, 420)
+		const weightedDescriptorList = validDescriptorList.map((item, index) => {
+			const depthWeight = Math.pow(Math.max(Number(item.depthMeters || 0), 0.35), 2.45)
+			const zoneWeight = item.zone === 'primary' ? 1.34 : item.zone === 'leak' ? 1.18 : 0.9
+			const concentrationWeight = validDescriptorList.reduce((total, otherItem, otherIndex) => {
+				if (index === otherIndex) {
+					return total
+				}
+				const distanceMeters = calculateDistanceMeters(
+					Number(item.centerLng),
+					Number(item.centerLat),
+					Number(otherItem.centerLng),
+					Number(otherItem.centerLat)
+				)
+				const closeness = Math.max(0, 1 - distanceMeters / concentrationDistance)
+				return total + closeness * Math.max(Number(otherItem.depthMeters || 0), 0.35)
+			}, 0)
+			return {
+				...item,
+				weight: depthWeight * zoneWeight * (1 + concentrationWeight * 0.72)
+			}
+		})
+
+		const totalWeight = weightedDescriptorList.reduce((total, item) => total + item.weight, 0)
+		if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+			return fallbackCoordinate
+		}
+
+		const centerLng =
+			weightedDescriptorList.reduce((total, item) => total + Number(item.centerLng) * item.weight, 0) / totalWeight
+		const centerLat =
+			weightedDescriptorList.reduce((total, item) => total + Number(item.centerLat) * item.weight, 0) / totalWeight
+		return [centerLng, centerLat]
 	}
 
 	function resolveFloodDepthLevel(depthMeters) {

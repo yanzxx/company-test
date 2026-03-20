@@ -108,6 +108,8 @@
 						:poi-list="poiList"
 						:affected-poi-list="scenarioPoiList"
 						:leak-point-list="leakPointList"
+						:signal-counter="scenarioState.signalCounter"
+						:latest-signal="latestSignal"
 						:level-key="responseLevel.key"
 						:color-map="poiColorMap"
 						:icon-map="poiIconMap"
@@ -153,7 +155,7 @@
 					</div>
 				</section>
 
-				<section class="panel-card glass-panel">
+				<!-- <section class="panel-card glass-panel">
 					<h3 class="panel-title">
 						<span class="panel-title__bar panel-title__bar--amber"></span>
 						救援物资配比
@@ -181,7 +183,7 @@
 							</div>
 						</div>
 					</div>
-				</section>
+				</section> -->
 
 				<section class="panel-card glass-panel panel-card--fill">
 					<h3 class="panel-title">
@@ -246,29 +248,16 @@
 					<a-input-number v-model:value="radiusDraft" :min="200" :step="50" :controls="false" />
 					<em>m</em>
 				</div>
-				<button class="footer-button footer-button--primary" type="button" @click="submitRadiusUpdate">
+				<button class="footer-button footer-button--primary" type="button" @click="submitRadiusUpdate()">
 					{{ updating ? '更新中' : '更新半径' }}
 				</button>
-				<button class="footer-button footer-button--secondary" type="button" @click="acceptSuggestion">
+				<button class="footer-button footer-button--secondary" type="button" @click="acceptSuggestion()">
 					采纳建议
 				</button>
 			</div>
 		</footer>
 
-		<div class="status-strip">
-			<div class="status-chip" :class="`status-chip--${streamMode}`" :title="streamHint">
-				<NotificationOutlined />
-				<span>{{ streamStatusText }}</span>
-			</div>
-			<div class="status-chip">
-				<ClockCircleOutlined />
-				<span>{{ screenTime }}</span>
-			</div>
-			<div class="status-chip">
-				<AlertOutlined />
-				<span>圈内设施 {{ scenarioPoiList.length }}</span>
-			</div>
-		</div>
+		
 
 		<a-drawer v-model:open="logDrawerOpen" title="演练操作日志" placement="right" :width="480">
 			<div class="drawer-list">
@@ -381,6 +370,19 @@
 		排涝设施: { icon: ControlOutlined, color: '#3ee7ff', glow: '0 0 12px rgba(62, 231, 255, 0.35)' },
 		应急指挥: { icon: AimOutlined, color: '#24f0cf', glow: '0 0 12px rgba(36, 240, 207, 0.35)' }
 	}
+	const facilityTypeLabelMap = {
+		医院: '医疗机构',
+		学校: '教育机构',
+		避险点: '避险设施',
+		电力设施: '电力设施',
+		消防设施: '消防设施',
+		物资仓储: '物资仓储',
+		社区服务: '社区服务',
+		交通枢纽: '交通枢纽',
+		排涝设施: '排涝设施',
+		应急指挥: '应急指挥'
+	}
+	const facilityTypeOrder = Object.keys(poiMetaMap)
 
 	const globalStore = useGlobalStore()
 	const { userInfo } = storeToRefs(globalStore)
@@ -494,10 +496,38 @@
 		}
 	])
 
+	const affectedFacilityStats = computed(() => {
+		const typeCountMap = scenarioPoiList.value.reduce((result, item) => {
+			if (!item?.type) {
+				return result
+			}
+			result[item.type] = Number(result[item.type] || 0) + 1
+			return result
+		}, {})
+		return facilityTypeOrder
+			.map((type) => ({
+				type,
+				label: facilityTypeLabelMap[type] || type,
+				count: Number(typeCountMap[type] || 0),
+				icon: poiMetaMap[type]?.icon || AimOutlined,
+				color: poiMetaMap[type]?.color || '#8ee7ff'
+			}))
+			.filter((item) => item.count > 0)
+			.sort((left, right) => {
+				if (right.count !== left.count) {
+					return right.count - left.count
+				}
+				return facilityTypeOrder.indexOf(left.type) - facilityTypeOrder.indexOf(right.type)
+			})
+	})
 	const facilityStats = computed(() => [
-		{ label: '受灾学校', count: countPoiByTypes(['学校']), icon: BankOutlined, color: '#ffd700' },
-		{ label: '受灾医院', count: countPoiByTypes(['医院']), icon: MedicineBoxOutlined, color: '#ff6b6b' },
-		{ label: '受损变电站', count: countPoiByTypes(['电力设施']), icon: ThunderboltOutlined, color: '#00a3ff' }
+		{
+			label: '总受灾设施',
+			count: scenarioPoiList.value.length,
+			icon: AimOutlined,
+			color: '#24f0cf'
+		},
+		...affectedFacilityStats.value.slice(0, 5)
 	])
 
 	const formattedLogs = computed(() =>
@@ -515,7 +545,7 @@
 		if (latestSignal.value) {
 			entries.push({
 				id: latestSignal.value.signalId || 'latest-signal',
-				...buildWarningMeta(latestSignal.value.signalName, latestSignal.value.message),
+				...buildWarningMeta(latestSignal.value.signalName, latestSignal.value.message, latestSignal.value.signalType),
 				time: formatTime(latestSignal.value.signalTime),
 				text: latestSignal.value.message || latestSignal.value.signalName || '灾情信号更新'
 			})
@@ -524,7 +554,7 @@
 			const text = item.detail || item.operationName || '系统事件'
 			entries.push({
 				id: item.id,
-				...buildWarningMeta(item.operationName, text),
+				...buildWarningMeta(item.operationName, text, item.operationType),
 				time: formatTime(item.createTime),
 				text
 			})
@@ -545,9 +575,7 @@
 		return `AI 建议：险情仍在演进，建议继续扩大监测圈并优先保护 ${topFacilityLabel.value}。`
 	})
 
-	const topFacilityLabel = computed(
-		() => facilityStats.value.slice().sort((left, right) => right.count - left.count)[0]?.label || '关键设施'
-	)
+	const topFacilityLabel = computed(() => affectedFacilityStats.value[0]?.label || '关键设施')
 
 	function createScenarioState() {
 		return {
@@ -563,19 +591,15 @@
 		}
 	}
 
-	function countPoiByTypes(typeList) {
-		return scenarioPoiList.value.filter((item) => typeList.includes(item.type)).length
-	}
-
-	function buildWarningMeta(title, text) {
+	function buildWarningMeta(title, text, eventType = '') {
 		const content = `${title || ''} ${text || ''}`
-		if (/加重|严重|扩大|漏水/.test(content)) {
+		if (/RISK_AGGRAVATED/.test(eventType) || /加重|严重|扩大|失控|重度/.test(content)) {
 			return { level: 'red', label: '红色预警' }
 		}
-		if (/人工|调整|更新|排查/.test(content)) {
+		if (/NEW_LEAK_POINT|RADIUS_UPDATE/.test(eventType) || /漏水|人工|调整|更新|排查|巡检|处置/.test(content)) {
 			return { level: 'orange', label: '橙色预警' }
 		}
-		return { level: 'cyan', label: '蓝色通报' }
+		return { level: 'yellow', label: '黄色预警' }
 	}
 
 	function appendSignal(signal) {
@@ -719,11 +743,12 @@
 			message.warning('请输入有效的受灾半径')
 			return
 		}
+		const finalRemark = typeof remark === 'string' && remark.trim() ? remark : '指挥席手动更新受灾半径'
 		updating.value = true
 		try {
 			const stateData = await emergencyDrillApi.updateRadius({
 				radiusMeters: Number(radiusDraft.value),
-				remark
+				remark: finalRemark
 			})
 			applyScenarioState(stateData)
 			if (stateData?.latestSignal) {
@@ -736,10 +761,10 @@
 		}
 	}
 
-	async function acceptSuggestion() {
+	function acceptSuggestion() {
 		const increment = responseLevel.value.key === 'critical' ? 220 : 120
 		radiusDraft.value = Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS) + increment
-		await submitRadiusUpdate(`采纳AI建议，扩大监测圈 ${increment} 米`)
+		message.info(`已采纳 AI 建议，受灾半径待更新为 ${Math.round(Number(radiusDraft.value))} 米`)
 	}
 
 	function startClock() {
@@ -858,7 +883,6 @@
 		--accent-green: #00e471;
 		--accent-amber: #ffb77d;
 		position: relative;
-		margin: -10px;
 		width: 1920px;
 		min-width: 1920px;
 		max-width: 1920px;
@@ -1367,9 +1391,9 @@
 		border-left-color: #f97316;
 	}
 
-	.warning-item--cyan {
-		background: rgba(0, 163, 255, 0.12);
-		border-left-color: var(--accent);
+	.warning-item--yellow {
+		background: rgba(250, 204, 21, 0.12);
+		border-left-color: #facc15;
 	}
 
 	.warning-item__head {
@@ -1619,7 +1643,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 14px 16px;
+		padding: 10px 16px;
 		border-radius: 8px;
 		background: rgba(26, 35, 51, 0.56);
 		border: 1px solid rgba(255, 255, 255, 0.05);
