@@ -33,9 +33,21 @@
 			</Marker>
 
 			<Marker
-				v-for="item in priorityInfrastructureList"
-				:key="`facility-${item.id}`"
-				:marker-id="`facility-${item.id}`"
+				v-for="item in compactInfrastructureDisplayList"
+				:key="`facility-compact-${item.displayKey}`"
+				:marker-id="`facility-compact-${item.displayKey}`"
+				:coordinate="[item.lng, item.lat]"
+				:offset="[0, -10]"
+			>
+				<div class="facility-dot-marker" :style="{ '--facility-color': item.color }" :title="`${item.name} · ${item.type}`">
+					<component :is="item.icon" class="facility-dot-marker__icon" />
+				</div>
+			</Marker>
+
+			<Marker
+				v-for="item in priorityInfrastructureDisplayList"
+				:key="`facility-${item.displayKey}`"
+				:marker-id="`facility-${item.displayKey}`"
 				:coordinate="[item.lng, item.lat]"
 				:offset="[0, -16]"
 			>
@@ -82,7 +94,7 @@
 			</div>
 			<div class="map-stage__stat">
 				<span>圈内设施</span>
-				<strong>{{ affectedPoiList.length }}</strong>
+				<strong>{{ displayAffectedInfrastructureList.length }}</strong>
 			</div>
 			<div class="map-stage__stat">
 				<span>漏水点</span>
@@ -187,6 +199,16 @@
 	const safeRadiusMeters = computed(() => Math.max(Number(props.radiusMeters || 0), 200))
 	const floodAnimationTick = ref(0)
 	const affectedPoiIdSet = computed(() => new Set(props.affectedPoiList.map((item) => item.id)))
+	const normalizedPoiList = computed(() =>
+		props.poiList
+			.filter((item) => item && isValidCoordinate(item.lng, item.lat))
+			.map((item, index) => decoratePoiItem(item, index, affectedPoiIdSet.value.has(item.id)))
+	)
+	const displayAffectedInfrastructureList = computed(() =>
+		props.affectedPoiList
+			.filter((item) => item && isValidCoordinate(item.lng, item.lat))
+			.map((item, index) => decoratePoiItem(item, index, true))
+	)
 	const displayLeakMarkers = computed(() =>
 		props.leakPointList
 			.filter((item) => isValidCoordinate(item.lng, item.lat))
@@ -211,16 +233,9 @@
 	})
 	const priorityInfrastructureList = computed(() =>
 		PRIORITY_FACILITY_TYPES.flatMap((type) => {
-			const matchedList = props.poiList
-				.filter((item) => item.type === type && isValidCoordinate(item.lng, item.lat))
-				.map((item) => ({
-					...item,
-					isAffected: affectedPoiIdSet.value.has(item.id),
-					distanceToCenter: calculateDistanceMeters(safeCenterLng.value, safeCenterLat.value, Number(item.lng), Number(item.lat)),
-					color: props.colorMap[item.type] || FALLBACK_COLOR,
-					icon: props.iconMap[item.type] || AimOutlined,
-					shortLabel: FACILITY_SHORT_LABEL_MAP[item.type] || item.type
-				}))
+			const sourceList = displayAffectedInfrastructureList.value.length ? displayAffectedInfrastructureList.value : normalizedPoiList.value
+			const matchedList = sourceList
+				.filter((item) => item.type === type)
 				.sort((left, right) => {
 					if (left.isAffected !== right.isAffected) {
 						return left.isAffected ? -1 : 1
@@ -230,6 +245,26 @@
 			return matchedList.length ? [matchedList[0]] : []
 		})
 	)
+	const priorityInfrastructureIdSet = computed(() => new Set(priorityInfrastructureList.value.map((item) => item.displayKey)))
+	const compactInfrastructureList = computed(() =>
+		displayAffectedInfrastructureList.value.filter((item) => !priorityInfrastructureIdSet.value.has(item.displayKey))
+	)
+	const priorityInfrastructureDisplayList = computed(() =>
+		spreadFacilityDisplayList(priorityInfrastructureList.value, {
+			minDistanceMeters: 220,
+			maxOffsetMeters: 120,
+			ringSpacingMeters: 38
+		})
+	)
+	const compactInfrastructureDisplayList = computed(() =>
+		spreadFacilityDisplayList(compactInfrastructureList.value, {
+			anchorList: priorityInfrastructureDisplayList.value,
+			minDistanceMeters: 118,
+			maxOffsetMeters: 110,
+			ringSpacingMeters: 30
+		})
+	)
+	const displayInfrastructureBoundsList = computed(() => [...priorityInfrastructureDisplayList.value, ...compactInfrastructureDisplayList.value])
 	const floodScenarioFactors = computed(() => {
 		const signalIndex = Math.max(Number(props.signalCounter || 0), 0)
 		const leakCount = displayLeakMarkers.value.length
@@ -361,7 +396,9 @@
 			})
 		}
 
-		return descriptorList
+		return typeof resolveNonOverlappingFloodDescriptors === 'function'
+			? resolveNonOverlappingFloodDescriptors(descriptorList, [safeCenterLng.value, safeCenterLat.value])
+			: descriptorList
 	})
 	const centerCoordinate = computed(() =>
 		calculateDisasterCenterCoordinate(floodPocketDescriptors.value, safeRadiusMeters.value, [safeCenterLng.value, safeCenterLat.value])
@@ -471,8 +508,10 @@
 	})
 	const mapBbox = computed(() => {
 		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.68, 320, 980)
-		const focusPoiList = props.affectedPoiList.length ? props.affectedPoiList : priorityInfrastructureList.value
-		const pointList = collectBoundsPoints(centerCoordinate.value[0], centerCoordinate.value[1], focusRadiusMeters, focusPoiList)
+		const focusPoiList = props.affectedPoiList.length ? displayInfrastructureBoundsList.value : priorityInfrastructureDisplayList.value
+		const pointList = collectBoundsPoints(centerCoordinate.value[0], centerCoordinate.value[1], focusRadiusMeters, focusPoiList).concat(
+			typeof collectFloodDescriptorBoundsPoints === 'function' ? collectFloodDescriptorBoundsPoints(floodPocketDescriptors.value) : []
+		)
 		const lngList = pointList.map((item) => item[0])
 		const latList = pointList.map((item) => item[1])
 		const minLng = Math.min(...lngList)
@@ -554,6 +593,248 @@
 			type: 'FeatureCollection',
 			features: Array.isArray(features) ? features : EMPTY_COLLECTION.features
 		}
+	}
+
+	function resolveNonOverlappingFloodDescriptors(descriptorList, fallbackCenter) {
+		const normalizedFallbackCenter = Array.isArray(fallbackCenter) && fallbackCenter.length >= 2 ? fallbackCenter : DEFAULT_CENTER
+		const prioritizedList = (Array.isArray(descriptorList) ? descriptorList : [])
+			.filter((item) => isValidCoordinate(item?.centerLng, item?.centerLat))
+			.map((item, index) => ({ ...item, originalIndex: index }))
+			.sort((left, right) => {
+				const priorityDiff = getFloodDescriptorPriority(left) - getFloodDescriptorPriority(right)
+				if (priorityDiff !== 0) {
+					return priorityDiff
+				}
+				if (Number(right.depthMeters || 0) !== Number(left.depthMeters || 0)) {
+					return Number(right.depthMeters || 0) - Number(left.depthMeters || 0)
+				}
+				return left.originalIndex - right.originalIndex
+			})
+		const placedDescriptorList = []
+
+		prioritizedList.forEach((item, index) => {
+			let adjustedItem = { ...item }
+			placedDescriptorList.forEach((placedItem, placedIndex) => {
+				adjustedItem = separateFloodDescriptor(adjustedItem, placedItem, normalizedFallbackCenter, index + placedIndex)
+			})
+			placedDescriptorList.push(adjustedItem)
+		})
+
+		return placedDescriptorList
+			.sort((left, right) => left.originalIndex - right.originalIndex)
+			.map(({ originalIndex, ...item }) => item)
+	}
+
+	function getFloodDescriptorPriority(item) {
+		if (item?.zone === 'primary') {
+			return 0
+		}
+		if (item?.zone === 'leak') {
+			return 1
+		}
+		return 2
+	}
+
+	function separateFloodDescriptor(currentDescriptor, placedDescriptor, fallbackCenter, seed) {
+		let adjustedDescriptor = { ...currentDescriptor }
+		for (let attempt = 0; attempt < 8; attempt += 1) {
+			const collisionMeta = measureFloodDescriptorCollision(placedDescriptor, adjustedDescriptor, fallbackCenter, seed + attempt)
+			if (!collisionMeta.hasCollision) {
+				return adjustedDescriptor
+			}
+
+			adjustedDescriptor.radiusX = Math.max(
+				getFloodPocketMinRadius(adjustedDescriptor, 'x'),
+				adjustedDescriptor.radiusX - collisionMeta.overlapMeters * getFloodPocketShrinkFactor(adjustedDescriptor, 'x')
+			)
+			adjustedDescriptor.radiusY = Math.max(
+				getFloodPocketMinRadius(adjustedDescriptor, 'y'),
+				adjustedDescriptor.radiusY - collisionMeta.overlapMeters * getFloodPocketShrinkFactor(adjustedDescriptor, 'y')
+			)
+
+			const remainingCollisionMeta = measureFloodDescriptorCollision(placedDescriptor, adjustedDescriptor, fallbackCenter, seed + attempt)
+			if (!remainingCollisionMeta.hasCollision) {
+				return adjustedDescriptor
+			}
+
+			const moveDistanceMeters = remainingCollisionMeta.overlapMeters + 20
+			adjustedDescriptor.centerLng = offsetLng(
+				adjustedDescriptor.centerLng,
+				adjustedDescriptor.centerLat,
+				remainingCollisionMeta.unitEast * moveDistanceMeters
+			)
+			adjustedDescriptor.centerLat = offsetLat(
+				adjustedDescriptor.centerLat,
+				remainingCollisionMeta.unitNorth * moveDistanceMeters
+			)
+		}
+		return adjustedDescriptor
+	}
+
+	function measureFloodDescriptorCollision(placedDescriptor, currentDescriptor, fallbackCenter, seed) {
+		const deltaMeters = calculateEastNorthDeltaMeters(
+			placedDescriptor.centerLng,
+			placedDescriptor.centerLat,
+			currentDescriptor.centerLng,
+			currentDescriptor.centerLat
+		)
+		let distanceMeters = Math.sqrt(deltaMeters.eastMeters * deltaMeters.eastMeters + deltaMeters.northMeters * deltaMeters.northMeters)
+		let unitEast = 0
+		let unitNorth = 0
+
+		if (distanceMeters > 1) {
+			unitEast = deltaMeters.eastMeters / distanceMeters
+			unitNorth = deltaMeters.northMeters / distanceMeters
+		} else {
+			const fallbackDelta = calculateEastNorthDeltaMeters(
+				fallbackCenter[0],
+				fallbackCenter[1],
+				currentDescriptor.centerLng,
+				currentDescriptor.centerLat
+			)
+			distanceMeters = Math.sqrt(
+				fallbackDelta.eastMeters * fallbackDelta.eastMeters + fallbackDelta.northMeters * fallbackDelta.northMeters
+			)
+			if (distanceMeters > 1) {
+				unitEast = fallbackDelta.eastMeters / distanceMeters
+				unitNorth = fallbackDelta.northMeters / distanceMeters
+			} else {
+				const angle = Math.toRadians(28 + (seed % 6) * 57)
+				unitEast = Math.cos(angle)
+				unitNorth = Math.sin(angle)
+				distanceMeters = 0
+			}
+		}
+
+		const angleFromPlaced = Math.atan2(unitNorth, unitEast)
+		const angleFromCurrent = Math.atan2(-unitNorth, -unitEast)
+		const requiredDistanceMeters =
+			calculateFloodDescriptorCollisionRadius(placedDescriptor, angleFromPlaced) +
+			calculateFloodDescriptorCollisionRadius(currentDescriptor, angleFromCurrent) +
+			18
+		return {
+			hasCollision: distanceMeters < requiredDistanceMeters,
+			overlapMeters: Math.max(requiredDistanceMeters - distanceMeters, 0),
+			unitEast,
+			unitNorth
+		}
+	}
+
+	function calculateFloodDescriptorCollisionRadius(descriptor, directionRadians) {
+		const directionalRadius = calculateDirectionalEllipseRadius(
+			Number(descriptor.radiusX || 0),
+			Number(descriptor.radiusY || 0),
+			Number(descriptor.rotation || 0),
+			directionRadians
+		)
+		return directionalRadius * (1.14 + Number(descriptor.pulseScale || 0) * 0.65)
+	}
+
+	function calculateDirectionalEllipseRadius(radiusX, radiusY, rotationDeg, directionRadians) {
+		const safeRadiusX = Math.max(Number(radiusX || 0), 1)
+		const safeRadiusY = Math.max(Number(radiusY || 0), 1)
+		const localDirection = Number(directionRadians) - (Number(rotationDeg || 0) * Math.PI) / 180
+		const cosValue = Math.cos(localDirection)
+		const sinValue = Math.sin(localDirection)
+		const denominator = (cosValue * cosValue) / (safeRadiusX * safeRadiusX) + (sinValue * sinValue) / (safeRadiusY * safeRadiusY)
+		return denominator > 0 ? 1 / Math.sqrt(denominator) : Math.max(safeRadiusX, safeRadiusY)
+	}
+
+	function getFloodPocketShrinkFactor(descriptor, axis) {
+		if (descriptor?.zone === 'primary') {
+			return axis === 'x' ? 0.12 : 0.1
+		}
+		if (descriptor?.zone === 'leak') {
+			return axis === 'x' ? 0.15 : 0.13
+		}
+		return axis === 'x' ? 0.18 : 0.16
+	}
+
+	function getFloodPocketMinRadius(descriptor, axis) {
+		if (descriptor?.zone === 'primary') {
+			return axis === 'x' ? 160 : 110
+		}
+		if (descriptor?.zone === 'leak') {
+			return axis === 'x' ? 86 : 66
+		}
+		return axis === 'x' ? 92 : 72
+	}
+
+	function decoratePoiItem(item, index, isAffected = false) {
+		const originLng = Number(item.lng)
+		const originLat = Number(item.lat)
+		return {
+			...item,
+			lng: originLng,
+			lat: originLat,
+			originLng,
+			originLat,
+			isAffected,
+			displayKey: item.id || `${Number(item.lng)}-${Number(item.lat)}-${index}`,
+			distanceToCenter: calculateDistanceMeters(safeCenterLng.value, safeCenterLat.value, originLng, originLat),
+			color: props.colorMap[item.type] || FALLBACK_COLOR,
+			icon: props.iconMap[item.type] || AimOutlined,
+			shortLabel: FACILITY_SHORT_LABEL_MAP[item.type] || item.type || '设施'
+		}
+	}
+
+	function spreadFacilityDisplayList(facilityList, options = {}) {
+		const { anchorList = [], minDistanceMeters = 120, maxOffsetMeters = 110, ringSpacingMeters = 30 } = options
+		const placedList = (Array.isArray(anchorList) ? anchorList : [])
+			.filter((item) => isValidCoordinate(item?.lng, item?.lat))
+			.map((item) => ({ lng: Number(item.lng), lat: Number(item.lat) }))
+
+		return (Array.isArray(facilityList) ? facilityList : []).map((item, index) => {
+			const originLng = Number(item.originLng ?? item.lng)
+			const originLat = Number(item.originLat ?? item.lat)
+			let candidate = {
+				...item,
+				lng: originLng,
+				lat: originLat
+			}
+
+			for (let attempt = 0; attempt < 12; attempt += 1) {
+				const collisionMeta = findFacilityCollision(candidate, placedList, minDistanceMeters)
+				if (!collisionMeta) {
+					break
+				}
+				const spreadAngle = resolveFacilitySpreadAngle(item.displayKey, attempt, index)
+				const spreadDistance = Math.min(
+					maxOffsetMeters,
+					ringSpacingMeters * (Math.floor(attempt / 4) + 1) + collisionMeta.overlapMeters * 0.85
+				)
+				candidate = {
+					...candidate,
+					lng: offsetLng(originLng, originLat, Math.cos(spreadAngle) * spreadDistance),
+					lat: offsetLat(originLat, Math.sin(spreadAngle) * spreadDistance)
+				}
+			}
+
+			placedList.push({ lng: Number(candidate.lng), lat: Number(candidate.lat) })
+			return candidate
+		})
+	}
+
+	function findFacilityCollision(candidate, placedList, minDistanceMeters) {
+		let maxOverlapMeters = 0
+		;(Array.isArray(placedList) ? placedList : []).forEach((item) => {
+			const distanceMeters = calculateDistanceMeters(Number(candidate.lng), Number(candidate.lat), Number(item.lng), Number(item.lat))
+			const overlapMeters = Number(minDistanceMeters) - distanceMeters
+			if (overlapMeters > maxOverlapMeters) {
+				maxOverlapMeters = overlapMeters
+			}
+		})
+		if (maxOverlapMeters <= 0) {
+			return null
+		}
+		return { overlapMeters: maxOverlapMeters }
+	}
+
+	function resolveFacilitySpreadAngle(displayKey, attempt, index) {
+		const seed = `${displayKey || 'facility'}-${index}`
+		const seedTotal = seed.split('').reduce((total, char) => total + char.charCodeAt(0), 0)
+		const baseAngle = (seedTotal % 360) * (Math.PI / 180)
+		return baseAngle + attempt * (Math.PI / 3.2)
 	}
 
 	function calculateDisasterCenterCoordinate(descriptorList, radiusMeters, fallbackCenter) {
@@ -728,6 +1009,22 @@
 		return pointList
 	}
 
+	function collectFloodDescriptorBoundsPoints(descriptorList) {
+		const pointList = []
+		;(Array.isArray(descriptorList) ? descriptorList : []).forEach((item) => {
+			if (!isValidCoordinate(item?.centerLng, item?.centerLat)) {
+				return
+			}
+			const boundRadiusMeters = Math.max(Number(item.radiusX || 0), Number(item.radiusY || 0)) * 1.18
+			pointList.push([Number(item.centerLng), Number(item.centerLat)])
+			pointList.push([offsetLng(item.centerLng, item.centerLat, boundRadiusMeters), Number(item.centerLat)])
+			pointList.push([offsetLng(item.centerLng, item.centerLat, -boundRadiusMeters), Number(item.centerLat)])
+			pointList.push([Number(item.centerLng), offsetLat(item.centerLat, boundRadiusMeters)])
+			pointList.push([Number(item.centerLng), offsetLat(item.centerLat, -boundRadiusMeters)])
+		})
+		return pointList
+	}
+
 	function collectGeojsonCoordinatePoints(geojson) {
 		const pointList = []
 		;(Array.isArray(geojson?.features) ? geojson.features : []).forEach((feature) => {
@@ -755,6 +1052,14 @@
 
 	function offsetLat(centerLat, northMeters) {
 		return Number(centerLat) + Number(northMeters) / 110540
+	}
+
+	function calculateEastNorthDeltaMeters(fromLng, fromLat, toLng, toLat) {
+		const avgLat = (Number(fromLat) + Number(toLat)) / 2
+		return {
+			eastMeters: (Number(toLng) - Number(fromLng)) * 111320 * Math.max(Math.cos((avgLat * Math.PI) / 180), 0.2),
+			northMeters: (Number(toLat) - Number(fromLat)) * 110540
+		}
 	}
 
 	function calculateDistanceMeters(centerLng, centerLat, targetLng, targetLat) {
@@ -1085,6 +1390,37 @@
 		font-size: 10px;
 		line-height: 1.2;
 		white-space: nowrap;
+	}
+
+	.facility-dot-marker {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: rgba(5, 17, 32, 0.94);
+		border: 1px solid var(--facility-color);
+		box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+		filter: drop-shadow(0 0 8px var(--facility-color));
+	}
+
+	.facility-dot-marker::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		bottom: -6px;
+		width: 2px;
+		height: 6px;
+		background: linear-gradient(180deg, var(--facility-color), rgba(255, 255, 255, 0));
+		transform: translateX(-50%);
+		opacity: 0.72;
+	}
+
+	.facility-dot-marker__icon {
+		font-size: 10px;
+		color: var(--facility-color);
 	}
 
 	:deep(.map) {

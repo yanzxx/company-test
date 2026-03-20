@@ -339,31 +339,62 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
 
     private List<EmergencyPoiResult> buildMockPoiCatalog() {
         String[] districtArray = {"滨江", "南山", "福田", "罗湖", "盐田", "龙岗", "宝安", "龙华", "光明", "坪山"};
-        String[] facilityArray = {"中心医院", "实验学校", "应急避险点", "变电站", "消防站", "物资仓库", "社区服务站", "公交枢纽", "排涝泵站", "指挥前置点"};
-        String[] typeArray = {"医院", "学校", "避险点", "电力设施", "消防设施", "物资仓储", "社区服务", "交通枢纽", "排涝设施", "应急指挥"};
+        double[][] districtOffsetArray = buildDistrictOffsetArray(districtArray.length);
+        FacilityTemplate[] facilityTemplateArray = buildFacilityTemplateArray();
         List<EmergencyPoiResult> resultList = new ArrayList<>(MOCK_POI_TOTAL);
-        for (int i = 0; i < districtArray.length; i++) {
-            int districtCol = i % 5;
-            int districtRow = i / 5;
-            double districtEastMeters = (districtCol - 2D) * 1650D + (i % 2 == 0 ? 180D : -180D);
-            double districtNorthMeters = (districtRow - 0.5D) * 1850D + ((i % 3) - 1) * 120D;
-            for (int j = 0; j < facilityArray.length; j++) {
-                int facilityCol = j % 5;
-                int facilityRow = j / 5;
-                double facilityEastMeters = (facilityCol - 2D) * 260D + (facilityRow == 0 ? -80D : 80D);
-                double facilityNorthMeters = (facilityRow - 0.5D) * 480D + (facilityCol % 2 == 0 ? 60D : -60D);
-                double eastMeters = districtEastMeters + facilityEastMeters;
-                double northMeters = districtNorthMeters + facilityNorthMeters;
+        int poiIndex = 1;
+        for (FacilityTemplate facilityTemplate : facilityTemplateArray) {
+            for (int index = 0; index < facilityTemplate.getCount(); index++) {
+                int[] districtOrder = facilityTemplate.getDistrictOrder();
+                int districtIndex = districtOrder[index % districtOrder.length];
+                double[] districtOffset = districtOffsetArray[districtIndex];
+                int districtCycle = index / districtOrder.length;
+                double spreadRadiusMeters = 120D + districtCycle * 48D
+                        + Math.floorMod(index * 19L + facilityTemplate.getCount(), 4L) * 24D;
+                double angleRadians = Math.toRadians(facilityTemplate.getAngleBiasDegrees() + index * 47D + districtIndex * 19D);
+                double eastMeters = districtOffset[0]
+                        + Math.cos(angleRadians) * spreadRadiusMeters * facilityTemplate.getEastScale()
+                        + Math.sin(angleRadians * 0.72D) * 36D;
+                double northMeters = districtOffset[1]
+                        + Math.sin(angleRadians) * spreadRadiusMeters * facilityTemplate.getNorthScale()
+                        + Math.cos(angleRadians * 0.58D) * 28D;
                 EmergencyPoiResult emergencyPoiResult = new EmergencyPoiResult();
-                emergencyPoiResult.setId(String.format("poi-%03d", i * facilityArray.length + j + 1));
-                emergencyPoiResult.setName(districtArray[i] + facilityArray[j]);
-                emergencyPoiResult.setType(typeArray[j]);
+                emergencyPoiResult.setId(String.format("poi-%03d", poiIndex++));
+                emergencyPoiResult.setName(String.format("%s%s%02d", districtArray[districtIndex],
+                        facilityTemplate.getFacilityName(), index + 1));
+                emergencyPoiResult.setType(facilityTemplate.getType());
                 emergencyPoiResult.setLng(round(offsetLng(DEFAULT_CENTER_LNG, DEFAULT_CENTER_LAT, eastMeters), 6));
                 emergencyPoiResult.setLat(round(offsetLat(DEFAULT_CENTER_LAT, northMeters), 6));
                 resultList.add(emergencyPoiResult);
             }
         }
         return resultList;
+    }
+
+    private double[][] buildDistrictOffsetArray(int districtCount) {
+        double[][] result = new double[districtCount][2];
+        for (int i = 0; i < districtCount; i++) {
+            int districtCol = i % 5;
+            int districtRow = i / 5;
+            result[i][0] = (districtCol - 2D) * 1650D + (i % 2 == 0 ? 180D : -180D);
+            result[i][1] = (districtRow - 0.5D) * 1850D + ((i % 3) - 1) * 120D;
+        }
+        return result;
+    }
+
+    private FacilityTemplate[] buildFacilityTemplateArray() {
+        return new FacilityTemplate[]{
+                new FacilityTemplate("医院", "中心医院", 14, new int[]{2, 3, 1, 7, 6, 0, 5, 8, 9, 4}, 0.72D, 0.54D, 18D),
+                new FacilityTemplate("学校", "实验学校", 16, new int[]{2, 1, 7, 3, 6, 0, 5, 8, 9, 4}, 0.94D, 0.62D, 43D),
+                new FacilityTemplate("避险点", "应急避险点", 18, new int[]{7, 2, 6, 1, 3, 5, 8, 0, 9, 4}, 1.05D, 0.78D, 67D),
+                new FacilityTemplate("电力设施", "变电站", 7, new int[]{6, 8, 5, 9, 4, 7, 2, 1, 3, 0}, 0.88D, 0.56D, 102D),
+                new FacilityTemplate("消防设施", "消防站", 9, new int[]{3, 2, 1, 6, 7, 5, 0, 8, 9, 4}, 0.76D, 0.52D, 138D),
+                new FacilityTemplate("物资仓储", "物资仓库", 7, new int[]{6, 5, 8, 9, 4, 7, 2, 1, 3, 0}, 0.96D, 0.58D, 174D),
+                new FacilityTemplate("社区服务", "社区服务站", 10, new int[]{2, 7, 1, 3, 6, 0, 5, 8, 9, 4}, 0.86D, 0.68D, 212D),
+                new FacilityTemplate("交通枢纽", "公交枢纽", 8, new int[]{2, 6, 1, 7, 3, 5, 0, 8, 9, 4}, 1.02D, 0.46D, 248D),
+                new FacilityTemplate("排涝设施", "排涝泵站", 7, new int[]{4, 8, 9, 6, 5, 7, 2, 1, 3, 0}, 0.82D, 0.74D, 286D),
+                new FacilityTemplate("应急指挥", "指挥前置点", 4, new int[]{2, 3, 1, 6, 7, 5, 0, 8, 9, 4}, 0.58D, 0.42D, 325D)
+        };
     }
 
     private void initializeLeakPoints() {
@@ -577,6 +608,62 @@ public class EmergencyDrillServiceImpl implements EmergencyDrillService {
         File logFile = FileUtil.file(System.getProperty("user.dir"), LOG_FILE_PATH);
         FileUtil.mkParentDirs(logFile);
         FileUtil.writeUtf8String(JSONUtil.toJsonPrettyStr(drillLogList), logFile);
+    }
+
+    private static class FacilityTemplate {
+
+        private final String type;
+
+        private final String facilityName;
+
+        private final int count;
+
+        private final int[] districtOrder;
+
+        private final double eastScale;
+
+        private final double northScale;
+
+        private final double angleBiasDegrees;
+
+        private FacilityTemplate(String type, String facilityName, int count, int[] districtOrder,
+                                 double eastScale, double northScale, double angleBiasDegrees) {
+            this.type = type;
+            this.facilityName = facilityName;
+            this.count = count;
+            this.districtOrder = districtOrder;
+            this.eastScale = eastScale;
+            this.northScale = northScale;
+            this.angleBiasDegrees = angleBiasDegrees;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public String getFacilityName() {
+            return facilityName;
+        }
+
+        public int getCount() {
+            return count;
+        }
+
+        public int[] getDistrictOrder() {
+            return districtOrder;
+        }
+
+        public double getEastScale() {
+            return eastScale;
+        }
+
+        public double getNorthScale() {
+            return northScale;
+        }
+
+        public double getAngleBiasDegrees() {
+            return angleBiasDegrees;
+        }
     }
 
     /**

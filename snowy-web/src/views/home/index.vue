@@ -139,7 +139,7 @@
 						:center-lat="scenarioState.centerLat"
 						:radius-meters="scenarioState.radiusMeters"
 						:poi-list="poiList"
-						:affected-poi-list="scenarioPoiList"
+						:affected-poi-list="displayScenarioPoiList"
 						:leak-point-list="leakPointList"
 						:signal-counter="scenarioState.signalCounter"
 						:latest-signal="latestSignal"
@@ -527,6 +527,15 @@
 	const scenarioPoiList = computed(() =>
 		(Array.isArray(scenarioState.value.affectedPoiList) ? scenarioState.value.affectedPoiList : []).slice()
 	)
+	const displayScenarioPoiList = computed(() =>
+		scenarioPoiList.value
+			.filter((item) => item && isValidCoordinate(item.lng, item.lat))
+			.map((item) => ({
+				...item,
+				lng: Number(item.lng),
+				lat: Number(item.lat)
+			}))
+	)
 	const responseLevel = computed(() => {
 		const radiusMeters = Number(scenarioState.value.radiusMeters || 0)
 		const affectedCount = scenarioPoiList.value.length
@@ -589,14 +598,14 @@
 	])
 
 	const affectedFacilityStats = computed(() => {
-		const typeCountMap = scenarioPoiList.value.reduce((result, item) => {
+		const typeCountMap = displayScenarioPoiList.value.reduce((result, item) => {
 			if (!item?.type) {
 				return result
 			}
 			result[item.type] = Number(result[item.type] || 0) + 1
 			return result
 		}, {})
-		return facilityTypeOrder
+		const orderedStats = facilityTypeOrder
 			.map((type) => ({
 				type,
 				label: facilityTypeLabelMap[type] || type,
@@ -611,16 +620,24 @@
 				}
 				return facilityTypeOrder.indexOf(left.type) - facilityTypeOrder.indexOf(right.type)
 			})
+		const extraTypeStats = Object.keys(typeCountMap)
+			.filter((type) => !facilityTypeOrder.includes(type))
+			.map((type) => ({
+				type,
+				label: facilityTypeLabelMap[type] || type,
+				count: Number(typeCountMap[type] || 0),
+				icon: poiMetaMap[type]?.icon || AimOutlined,
+				color: poiMetaMap[type]?.color || '#8ee7ff'
+			}))
+			.sort((left, right) => {
+				if (right.count !== left.count) {
+					return right.count - left.count
+				}
+				return left.label.localeCompare(right.label, 'zh-Hans-CN')
+			})
+		return [...orderedStats, ...extraTypeStats]
 	})
-	const facilityStats = computed(() => [
-		{
-			label: '总受灾设施',
-			count: scenarioPoiList.value.length,
-			icon: AimOutlined,
-			color: '#24f0cf'
-		},
-		...affectedFacilityStats.value.slice(0, 5)
-	])
+	const facilityStats = computed(() => affectedFacilityStats.value)
 
 	const formattedLogs = computed(() =>
 		logList.value.map((item) => {
@@ -834,6 +851,10 @@
 
 	function formatCount(value) {
 		return `${Number(value || 0).toString().padStart(2, '0')}`
+	}
+
+	function isValidCoordinate(lng, lat) {
+		return Number.isFinite(Number(lng)) && Number.isFinite(Number(lat))
 	}
 
 	function clearLoginState() {
@@ -1872,8 +1893,8 @@
 	}
 
 	.facility-list {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 12px;
 	}
 
@@ -1881,6 +1902,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 12px;
 		padding: 10px 16px;
 		border-radius: 8px;
 		background: rgba(26, 35, 51, 0.56);
@@ -1891,13 +1913,21 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+		min-width: 0;
 		font-size: 13px;
 		color: rgba(214, 227, 255, 0.8);
 	}
 
+	.facility-item__meta span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.facility-item strong {
 		font-family: 'Space Grotesk', sans-serif;
-		font-size: 24px;
+		flex-shrink: 0;
+		font-size: 22px;
 		color: #ffffff;
 	}
 
