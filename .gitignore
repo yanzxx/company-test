@@ -54,6 +54,8 @@ pnpm-debug.log*
 # other files
 stats.html
 auto-imports.d.ts
+*.mov
+*.MOV
 
 /app-log
 application-local.properties
