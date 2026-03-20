@@ -300,137 +300,142 @@
 		</footer>
 
 		
-
-		<a-drawer
-			v-model:visible="logDrawerOpen"
-			title="演练操作日志"
-			placement="right"
-			:width="520"
-			wrapClassName="emergency-log-drawer"
-			:mask-style="{ background: 'rgba(2, 8, 23, 0.58)', backdropFilter: 'blur(4px)' }"
-			:content-wrapper-style="{ boxShadow: '-18px 0 42px rgba(0, 0, 0, 0.34)' }"
-			:drawer-style="{
-				background: 'radial-gradient(circle at top left, rgba(0, 228, 255, 0.1), transparent 28%), linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98))',
-				borderLeft: '1px solid rgba(122, 218, 255, 0.14)',
-				color: 'var(--text-main)'
-			}"
-			:header-style="{ padding: '18px 20px 16px', background: 'transparent', borderBottom: '1px solid rgba(122, 218, 255, 0.12)' }"
-			:body-style="{ padding: '18px 20px 20px', background: 'transparent' }"
-		>
-			<div class="drawer-toolbar">
-				<div class="drawer-toolbar__summary">
-					<strong>{{ formattedLogs.length }}</strong>
-					<span>条记录</span>
-				</div>
-				<button class="drawer-toolbar__refresh" type="button" @click="refreshLogPanel()">
-					<SyncOutlined :spin="logLoading" />
-					<span>刷新日志</span>
-				</button>
-			</div>
-			<div class="drawer-filters">
-				<a-input v-model:value="logKeyword" allow-clear placeholder="搜索操作名称 / 描述 / 操作人" />
-				<div class="drawer-filter-tabs">
-					<button
-						v-for="item in logFilterOptions"
-						:key="item.key"
-						class="drawer-filter-tab"
-						:class="{ 'drawer-filter-tab--active': activeLogFilter === item.key }"
-						type="button"
-						@click="activeLogFilter = item.key"
-					>
-						<span>{{ item.label }}</span>
-						<em>{{ item.count }}</em>
-					</button>
-				</div>
-			</div>
-			<div class="drawer-list">
-				<div v-for="item in filteredLogs" :key="item.id" class="drawer-item">
-					<div class="drawer-item__head">
-						<div class="drawer-item__title">
-							<span class="drawer-item__tag" :class="`drawer-item__tag--${item.group}`">{{ item.groupLabel }}</span>
-							<strong>{{ item.title }}</strong>
-						</div>
-						<span>{{ item.time }}</span>
-					</div>
-					<p>{{ item.detail }}</p>
-					<div class="drawer-item__foot">
-						<span>{{ item.operator }}</span>
-						<span>{{ item.typeLabel }}</span>
-					</div>
-				</div>
-				<div v-if="!filteredLogs.length" class="empty-panel">暂无匹配的演练日志。</div>
-			</div>
-		</a-drawer>
-
-		<a-drawer
-			v-model:visible="promptDrawerOpen"
-			title="AI Prompt 辅助"
-			placement="left"
-			:width="620"
-			wrapClassName="ai-prompt-drawer"
-			:mask-style="{ background: 'rgba(2, 8, 23, 0.54)', backdropFilter: 'blur(4px)' }"
-			:content-wrapper-style="{ boxShadow: '18px 0 42px rgba(0, 0, 0, 0.34)' }"
-			:drawer-style="{
-				background: 'radial-gradient(circle at top right, rgba(0, 228, 255, 0.08), transparent 24%), linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98))',
-				borderRight: '1px solid rgba(122, 218, 255, 0.14)',
-				color: 'var(--text-main)'
-			}"
-			:header-style="{ padding: '18px 20px 16px', background: 'transparent', borderBottom: '1px solid rgba(122, 218, 255, 0.12)' }"
-			:body-style="{ padding: '18px 20px 20px', background: 'transparent' }"
-		>
-			<div class="prompt-panel">
-				<div class="prompt-panel__meta">
-					<div>
-						<strong>{{ aiSuggestionProvider }}</strong>
-						<p>{{ aiSuggestionMode }}</p>
-					</div>
-					<button class="drawer-toolbar__refresh" type="button" @click="loadAiSuggestion()">
-						<SyncOutlined :spin="aiSuggestionLoading" />
-						<span>重新生成</span>
-					</button>
-				</div>
-				<div class="prompt-card">
-					<h4>当前救援建议</h4>
-					<p>{{ aiSuggestion }}</p>
-				</div>
-				<div class="prompt-card">
-					<h4>行动要点</h4>
-					<div class="prompt-action-list">
-						<div v-for="item in aiSuggestionActions" :key="item" class="prompt-action-item">{{ item }}</div>
-					</div>
-				</div>
-				<div class="prompt-card">
-					<h4>AI 规划救援路线</h4>
-					<div class="prompt-route-list">
-						<div
-							v-for="route in aiSuggestionRoutes"
-							:key="route.routeId"
-							class="prompt-route-item"
-							:style="{ '--route-color': route.lineColor, borderColor: route.lineColor }"
-						>
-							<div class="prompt-route-item__head">
-								<strong>{{ route.routeName }}</strong>
-								<span>{{ route.estimatedMinutes }} 分钟</span>
+		<transition name="screen-drawer-right">
+			<div
+				v-if="logDrawerOpen"
+				class="screen-drawer-overlay screen-drawer-overlay--right screen-drawer-overlay--log"
+				@click.self="handleCloseLogDrawer"
+			>
+				<section class="screen-drawer screen-drawer--right screen-drawer--log" @click.stop>
+					<header class="screen-drawer__header">
+						<div class="screen-drawer__title">演练操作日志</div>
+						<button class="screen-drawer__header-close" type="button" aria-label="关闭日志面板" @click="handleCloseLogDrawer">
+							<CloseOutlined />
+						</button>
+					</header>
+					<div class="screen-drawer__body custom-scrollbar">
+						<div class="drawer-toolbar">
+							<div class="drawer-toolbar__summary">
+								<strong>{{ formattedLogs.length }}</strong>
+								<span>条记录</span>
 							</div>
-							<p>{{ route.description }}</p>
-							<div class="prompt-route-item__path">{{ route.startName }} → {{ route.endName }}</div>
+							<div class="drawer-toolbar__actions">
+								<button class="drawer-toolbar__refresh" type="button" @click="refreshLogPanel()">
+									<SyncOutlined :spin="logLoading" />
+									<span>刷新日志</span>
+								</button>
+							</div>
+						</div>
+						<div class="drawer-filters">
+							<a-input v-model:value="logKeyword" allow-clear placeholder="搜索操作名称 / 描述 / 操作人" />
+							<div class="drawer-filter-tabs">
+								<button
+									v-for="item in logFilterOptions"
+									:key="item.key"
+									class="drawer-filter-tab"
+									:class="{ 'drawer-filter-tab--active': activeLogFilter === item.key }"
+									type="button"
+									@click="activeLogFilter = item.key"
+								>
+									<span>{{ item.label }}</span>
+									<em>{{ item.count }}</em>
+								</button>
+							</div>
+						</div>
+						<div class="drawer-list">
+							<div v-for="item in filteredLogs" :key="item.id" class="drawer-item">
+								<div class="drawer-item__head">
+									<div class="drawer-item__title">
+										<span class="drawer-item__tag" :class="`drawer-item__tag--${item.group}`">{{ item.groupLabel }}</span>
+										<strong>{{ item.title }}</strong>
+									</div>
+									<span>{{ item.time }}</span>
+								</div>
+								<p>{{ item.detail }}</p>
+								<div class="drawer-item__foot">
+									<span>{{ item.operator }}</span>
+									<span>{{ item.typeLabel }}</span>
+								</div>
+							</div>
+							<div v-if="!filteredLogs.length" class="empty-panel">暂无匹配的演练日志。</div>
 						</div>
 					</div>
-				</div>
-				<div class="prompt-card">
-					<h4>GeoJSON 示例结构</h4>
-					<pre class="prompt-template">{{ aiGeoJsonExample }}</pre>
-				</div>
-				<div class="prompt-card">
-					<h4>空间计算代码示例</h4>
-					<pre class="prompt-template">{{ aiSpatialCodeExample }}</pre>
-				</div>
-				<div class="prompt-card">
-					<h4>{{ aiPromptTitle }}</h4>
-					<pre class="prompt-template">{{ aiPromptTemplate }}</pre>
-				</div>
+				</section>
 			</div>
-		</a-drawer>
+		</transition>
+
+		<transition name="screen-drawer-left">
+			<div
+				v-if="promptDrawerOpen"
+				class="screen-drawer-overlay screen-drawer-overlay--left screen-drawer-overlay--prompt"
+				@click.self="handleClosePromptDrawer"
+			>
+				<section class="screen-drawer screen-drawer--left screen-drawer--prompt" @click.stop>
+					<header class="screen-drawer__header">
+						<div class="screen-drawer__title">AI Prompt 辅助</div>
+						<button class="screen-drawer__header-close" type="button" aria-label="关闭Prompt面板" @click="handleClosePromptDrawer">
+							<CloseOutlined />
+						</button>
+					</header>
+					<div class="screen-drawer__body custom-scrollbar">
+						<div class="prompt-panel">
+							<div class="prompt-panel__meta">
+								<div>
+									<strong>{{ aiSuggestionProvider }}</strong>
+									<p>{{ aiSuggestionMode }}</p>
+								</div>
+								<div class="drawer-toolbar__actions">
+									<button class="drawer-toolbar__refresh" type="button" @click="loadAiSuggestion()">
+										<SyncOutlined :spin="aiSuggestionLoading" />
+										<span>重新生成</span>
+									</button>
+								</div>
+							</div>
+							<div class="prompt-card">
+								<h4>当前救援建议</h4>
+								<p>{{ aiSuggestion }}</p>
+							</div>
+							<div class="prompt-card">
+								<h4>行动要点</h4>
+								<div class="prompt-action-list">
+									<div v-for="item in aiSuggestionActions" :key="item" class="prompt-action-item">{{ item }}</div>
+								</div>
+							</div>
+							<div class="prompt-card">
+								<h4>AI 规划救援路线</h4>
+								<div class="prompt-route-list">
+									<div
+										v-for="route in aiSuggestionRoutes"
+										:key="route.routeId"
+										class="prompt-route-item"
+										:style="{ '--route-color': route.lineColor, borderColor: route.lineColor }"
+									>
+										<div class="prompt-route-item__head">
+											<strong>{{ route.routeName }}</strong>
+											<span>{{ route.estimatedMinutes }} 分钟</span>
+										</div>
+										<p>{{ route.description }}</p>
+										<div class="prompt-route-item__path">{{ route.startName }} → {{ route.endName }}</div>
+									</div>
+								</div>
+							</div>
+							<div class="prompt-card">
+								<h4>GeoJSON 示例结构</h4>
+								<pre class="prompt-template">{{ aiGeoJsonExample }}</pre>
+							</div>
+							<div class="prompt-card">
+								<h4>空间计算代码示例</h4>
+								<pre class="prompt-template">{{ aiSpatialCodeExample }}</pre>
+							</div>
+							<div class="prompt-card">
+								<h4>{{ aiPromptTitle }}</h4>
+								<pre class="prompt-template">{{ aiPromptTemplate }}</pre>
+							</div>
+						</div>
+					</div>
+				</section>
+			</div>
+		</transition>
 	</div>
 </AdaptBody>
 </template>
@@ -445,6 +450,7 @@
 		BankOutlined,
 		CarOutlined,
 		CodeOutlined,
+		CloseOutlined,
 		ClockCircleOutlined,
 		ControlOutlined,
 		ExclamationCircleOutlined,
@@ -862,17 +868,27 @@
 	}
 
 	function handleOpenLogDrawer() {
+		promptDrawerOpen.value = false
 		logDrawerOpen.value = true
 		logKeyword.value = ''
 		activeLogFilter.value = 'all'
 		refreshLogPanel(false)
 	}
 
+	function handleCloseLogDrawer() {
+		logDrawerOpen.value = false
+	}
+
 	async function handleOpenPromptDrawer() {
+		logDrawerOpen.value = false
 		promptDrawerOpen.value = true
 		if (!aiSuggestionState.value) {
 			await loadAiSuggestion(false)
 		}
+	}
+
+	function handleClosePromptDrawer() {
+		promptDrawerOpen.value = false
 	}
 
 	function createWarningEntryFromLog(logItem, fallbackId) {
@@ -2909,6 +2925,12 @@
 		margin-bottom: 14px;
 	}
 
+	.drawer-toolbar__actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+	}
+
 	.drawer-toolbar__summary {
 		display: flex;
 		align-items: baseline;
@@ -2943,6 +2965,27 @@
 
 	.drawer-toolbar__refresh:hover {
 		background: rgba(0, 163, 255, 0.18);
+		color: #ffffff;
+	}
+
+	.drawer-toolbar__close {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 999px;
+		background: rgba(16, 28, 48, 0.9);
+		color: rgba(214, 227, 255, 0.76);
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+	}
+
+	.drawer-toolbar__close:hover {
+		border-color: rgba(255, 255, 255, 0.22);
+		background: rgba(34, 49, 73, 0.92);
 		color: #ffffff;
 	}
 
@@ -3324,198 +3367,184 @@
 </style>
 
 <style lang="less">
-	.emergency-log-drawer {
-		.ant-drawer-mask {
-			background: rgba(2, 8, 23, 0.58);
-			backdrop-filter: blur(4px);
-		}
-
-		.ant-drawer-content-wrapper {
-			box-shadow: -18px 0 42px rgba(0, 0, 0, 0.34);
-		}
-
-		.ant-drawer-content {
-			position: relative;
-			background:
-				radial-gradient(circle at top left, rgba(0, 228, 255, 0.1), transparent 28%),
-				linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
-			border-left: 1px solid rgba(122, 218, 255, 0.14);
-			color: #d6e3ff;
-		}
-
-		.ant-drawer-content::before {
-			content: '';
-			position: absolute;
-			inset: 0;
-			background:
-				linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
-				radial-gradient(circle at top right, rgba(0, 163, 255, 0.08), transparent 26%);
-			pointer-events: none;
-		}
-
-		.ant-drawer-header {
-			position: relative;
-			z-index: 1;
-			padding: 18px 20px 16px;
-			background: transparent;
-			border-bottom: 1px solid rgba(122, 218, 255, 0.12);
-		}
-
-		.ant-drawer-header-title {
-			align-items: center;
-		}
-
-		.ant-drawer-title {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			font-size: 15px;
-			font-weight: 700;
-			letter-spacing: 0.08em;
-			color: #f3fbff;
-		}
-
-		.ant-drawer-title::before {
-			content: '';
-			width: 7px;
-			height: 7px;
-			border-radius: 999px;
-			background: #00e4ff;
-			box-shadow: 0 0 12px rgba(0, 228, 255, 0.72);
-			flex: 0 0 auto;
-		}
-
-		.ant-drawer-close {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			width: 32px;
-			height: 32px;
-			margin-inline-end: 0;
-			border: 1px solid rgba(122, 218, 255, 0.16);
-			border-radius: 999px;
-			background: rgba(9, 23, 42, 0.72);
-			color: rgba(214, 227, 255, 0.72);
-			transition: all 0.2s ease;
-		}
-
-		.ant-drawer-close:hover {
-			border-color: rgba(0, 228, 255, 0.3);
-			background: rgba(0, 163, 255, 0.14);
-			color: #ffffff;
-		}
-
-		.ant-drawer-body {
-			position: relative;
-			z-index: 1;
-			padding: 18px 20px 20px;
-			background: transparent;
-			scrollbar-width: thin;
-			scrollbar-color: rgba(0, 163, 255, 0.28) rgba(255, 255, 255, 0.04);
-		}
-
-		.ant-drawer-body::-webkit-scrollbar {
-			width: 6px;
-		}
-
-		.ant-drawer-body::-webkit-scrollbar-track {
-			background: rgba(255, 255, 255, 0.04);
-		}
-
-		.ant-drawer-body::-webkit-scrollbar-thumb {
-			background: rgba(0, 163, 255, 0.28);
-			border-radius: 999px;
-		}
+	.screen-drawer-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 1200;
+		display: flex;
+		pointer-events: auto;
 	}
 
-	.ai-prompt-drawer {
-		.ant-drawer-mask {
-			background: rgba(2, 8, 23, 0.54);
-			backdrop-filter: blur(4px);
-		}
+	.screen-drawer-overlay--left {
+		justify-content: flex-start;
+	}
 
-		.ant-drawer-content-wrapper {
-			box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
-		}
+	.screen-drawer-overlay--right {
+		justify-content: flex-end;
+	}
 
-		.ant-drawer-content {
-			position: relative;
-			background:
-				radial-gradient(circle at top right, rgba(0, 228, 255, 0.08), transparent 24%),
-				linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
-			border-right: 1px solid rgba(122, 218, 255, 0.14);
-			color: #d6e3ff;
-		}
+	.screen-drawer-overlay--log {
+		background: rgba(2, 8, 23, 0.58);
+		backdrop-filter: blur(4px);
+	}
 
-		.ant-drawer-content::before {
-			content: '';
-			position: absolute;
-			inset: 0;
-			background:
-				linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
-				radial-gradient(circle at top left, rgba(0, 163, 255, 0.08), transparent 26%);
-			pointer-events: none;
-		}
+	.screen-drawer-overlay--prompt {
+		background: rgba(2, 8, 23, 0.54);
+		backdrop-filter: blur(4px);
+	}
 
-		.ant-drawer-header {
-			position: relative;
-			z-index: 1;
-			padding: 18px 20px 16px;
-			background: transparent;
-			border-bottom: 1px solid rgba(122, 218, 255, 0.12);
-		}
+	.screen-drawer {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		width: min(var(--screen-drawer-width, 520px), calc(100% - 64px));
+		height: 100%;
+		color: #d6e3ff;
+		overflow: hidden;
+		will-change: transform, opacity;
+	}
 
-		.ant-drawer-header-title {
-			align-items: center;
-		}
+	.screen-drawer::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
 
-		.ant-drawer-title {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			font-size: 15px;
-			font-weight: 700;
-			letter-spacing: 0.08em;
-			color: #f3fbff;
-		}
+	.screen-drawer--log {
+		--screen-drawer-width: 520px;
+		background:
+			radial-gradient(circle at top left, rgba(0, 228, 255, 0.1), transparent 28%),
+			linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
+		border-left: 1px solid rgba(122, 218, 255, 0.14);
+		box-shadow: -18px 0 42px rgba(0, 0, 0, 0.34);
+	}
 
-		.ant-drawer-title::before {
-			content: '';
-			width: 7px;
-			height: 7px;
-			border-radius: 999px;
-			background: #00e4ff;
-			box-shadow: 0 0 12px rgba(0, 228, 255, 0.72);
-			flex: 0 0 auto;
-		}
+	.screen-drawer--log::before {
+		background:
+			linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
+			radial-gradient(circle at top right, rgba(0, 163, 255, 0.08), transparent 26%);
+	}
 
-		.ant-drawer-close {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			width: 32px;
-			height: 32px;
-			margin-inline-end: 0;
-			border: 1px solid rgba(122, 218, 255, 0.16);
-			border-radius: 999px;
-			background: rgba(9, 23, 42, 0.72);
-			color: rgba(214, 227, 255, 0.72);
-			transition: all 0.2s ease;
-		}
+	.screen-drawer--prompt {
+		--screen-drawer-width: 620px;
+		background:
+			radial-gradient(circle at top right, rgba(0, 228, 255, 0.08), transparent 24%),
+			linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
+		border-right: 1px solid rgba(122, 218, 255, 0.14);
+		box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
+	}
 
-		.ant-drawer-close:hover {
-			border-color: rgba(0, 228, 255, 0.3);
-			background: rgba(0, 163, 255, 0.14);
-			color: #ffffff;
-		}
+	.screen-drawer--prompt::before {
+		background:
+			linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
+			radial-gradient(circle at top left, rgba(0, 163, 255, 0.08), transparent 26%);
+	}
 
-		.ant-drawer-body {
-			position: relative;
-			z-index: 1;
-			padding: 18px 20px 20px;
-			background: transparent;
-			scrollbar-width: thin;
-			scrollbar-color: rgba(0, 163, 255, 0.28) rgba(255, 255, 255, 0.04);
-		}
+	.screen-drawer__header {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		padding: 18px 20px 16px;
+		border-bottom: 1px solid rgba(122, 218, 255, 0.12);
+	}
+
+	.screen-drawer__title {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 15px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		color: #f3fbff;
+	}
+
+	.screen-drawer__title::before {
+		content: '';
+		width: 7px;
+		height: 7px;
+		border-radius: 999px;
+		background: #00e4ff;
+		box-shadow: 0 0 12px rgba(0, 228, 255, 0.72);
+		flex: 0 0 auto;
+	}
+
+	.screen-drawer__header-close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: 1px solid rgba(122, 218, 255, 0.16);
+		border-radius: 999px;
+		background: rgba(9, 23, 42, 0.72);
+		color: rgba(214, 227, 255, 0.72);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.screen-drawer__header-close:hover {
+		border-color: rgba(0, 228, 255, 0.3);
+		background: rgba(0, 163, 255, 0.14);
+		color: #ffffff;
+	}
+
+	.screen-drawer__body {
+		position: relative;
+		z-index: 1;
+		flex: 1;
+		padding: 18px 20px 20px;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 163, 255, 0.28) rgba(255, 255, 255, 0.04);
+	}
+
+	.screen-drawer__body::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.screen-drawer__body::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.screen-drawer__body::-webkit-scrollbar-thumb {
+		background: rgba(0, 163, 255, 0.28);
+		border-radius: 999px;
+	}
+
+	.screen-drawer-left-enter-active,
+	.screen-drawer-left-leave-active,
+	.screen-drawer-right-enter-active,
+	.screen-drawer-right-leave-active {
+		transition: opacity 0.24s ease;
+	}
+
+	.screen-drawer-left-enter-active .screen-drawer,
+	.screen-drawer-left-leave-active .screen-drawer,
+	.screen-drawer-right-enter-active .screen-drawer,
+	.screen-drawer-right-leave-active .screen-drawer {
+		transition: transform 0.28s ease, opacity 0.28s ease;
+	}
+
+	.screen-drawer-left-enter-from,
+	.screen-drawer-left-leave-to,
+	.screen-drawer-right-enter-from,
+	.screen-drawer-right-leave-to {
+		opacity: 0;
+	}
+
+	.screen-drawer-left-enter-from .screen-drawer,
+	.screen-drawer-left-leave-to .screen-drawer {
+		transform: translateX(-100%);
+		opacity: 0.78;
+	}
+
+	.screen-drawer-right-enter-from .screen-drawer,
+	.screen-drawer-right-leave-to .screen-drawer {
+		transform: translateX(100%);
+		opacity: 0.78;
 	}
 </style>
