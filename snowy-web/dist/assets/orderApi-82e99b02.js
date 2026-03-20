@@ -1,0 +1,1 @@
+import{b as e}from"./index-bd31d7aa.js";const r=(r,...o)=>e("/pay/order/"+r,...o),o={orderPage:e=>r("page",e,"get"),orderDetailsList:e=>r("detailsList",e,"get"),orderRefundList:e=>r("refundList",e,"get"),orderDoRefund:e=>r("doRefund",e),orderDelete:e=>r("delete",e),orderSync:e=>r("sync",e),orderClose:e=>r("close",e)};export{o};

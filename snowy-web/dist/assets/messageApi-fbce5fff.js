@@ -1,0 +1,1 @@
+import{b as e}from"./index-bd31d7aa.js";const s=(s,...a)=>e(`/dev/message/${s}`,...a),a={messagePage:e=>s("page",e,"get"),messageSend:e=>s("send",e),messageDelete:e=>s("delete",e),messageDetail:e=>s("detail",e,"get")};export{a as m};

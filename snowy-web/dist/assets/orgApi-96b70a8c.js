@@ -1,0 +1,1 @@
+import{b as e}from"./index-bd31d7aa.js";const t=(t,...g)=>e(`/sys/org/${t}`,...g),g={orgPage:e=>t("page",e,"get"),orgList:e=>t("list",e,"get"),orgTree:e=>t("tree",e,"get"),submitForm:(e,g=!1)=>t(g?"add":"edit",e),orgDelete:e=>t("delete",e),orgDetail:e=>t("detail",e,"get")};export{g as o};

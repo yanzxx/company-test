@@ -1,0 +1,1 @@
+import{b as e}from"./index-bd31d7aa.js";const t=(t,...r)=>e(`/sys/region/${t}`,...r),r={regionPage:e=>t("page",e,"get"),regionTree:e=>t("tree",e,"get"),submitForm:(e,r=!1)=>t(r?"add":"edit",e),regionDelete:e=>t("delete",e),regionDetail:e=>t("detail",e,"get")};export{r};

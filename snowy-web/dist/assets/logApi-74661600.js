@@ -1,0 +1,1 @@
+import{b as a}from"./index-bd31d7aa.js";const t=(t,...e)=>a(`/dev/log/${t}`,...e),e={logPage:a=>t("page",a,"get"),logVisLineChartData:a=>t("vis/lineChartData",a,"get"),logVisPieChartData:a=>t("vis/pieChartData",a,"get"),logOpBarChartData:a=>t("op/barChartData",a,"get"),logOpPieChartData:a=>t("op/pieChartData",a,"get"),logDelete:a=>t("delete",a)};export{e as l};

@@ -24,7 +24,7 @@ bin/
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
-/dist/
+
 /nbdist/
 /.nb-gradle/
 build/
@@ -37,7 +37,7 @@ build/
 .DS_Store
 node_modules
 build_docker.bat
-/dist
+
 *.lock
 package-lock.json
 

@@ -1,0 +1,1 @@
+import{b as t}from"./index-bd31d7aa.js";const a=(a,...s)=>t(`/flw/task/${a}`,...s),s={taskTodoPage:t=>a("todoPage",t,"get"),taskDonePage:t=>a("donePage",t,"get"),taskAdjust:t=>a("adjust",t),taskPass:t=>a("pass",t),taskReject:t=>a("reject",t),taskTurn:t=>a("turn",t),taskDetail:t=>a("detail",t,"get")};export{s as t};

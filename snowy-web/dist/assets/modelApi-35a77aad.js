@@ -1,0 +1,1 @@
+import{b as e}from"./index-bd31d7aa.js";const l=(l,...d)=>e(`/flw/model/${l}`,...d),d={modelPage:e=>l("page",e,"get"),modelAllList:e=>l("allList",e,"get"),submitForm:(e,d=!1)=>l(d?"add":"edit",e),modelDelete:e=>l("delete",e),modelDeploy:e=>l("deploy",e),modelDetail:e=>l("detail",e,"get"),modelDisable:e=>l("disableModel",e),modelEnable:e=>l("enableModel",e)};export{d as m};

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+<!--  <link rel="icon" href="/jiage.ico">-->
+  <title>佳格</title>
+  <style>
+    .dot{animation:antRotate 1.2s infinite linear;transform:rotate(45deg);position:relative;display:inline-block;font-size:32px;width:32px;height:32px;box-sizing:border-box}.dot i{width:14px;height:14px;position:absolute;display:block;background-color:#1890ff;border-radius:100%;transform:scale(.75);transform-origin:50% 50%;opacity:.3;animation:antSpinMove 1s infinite linear alternate}.dot i:nth-child(1){top:0;left:0}.dot i:nth-child(2){top:0;right:0;animation-delay:.4s}.dot i:nth-child(3){right:0;bottom:0;animation-delay:.8s}.dot i:nth-child(4){bottom:0;left:0;animation-delay:1.2s}@keyframes antRotate{to{transform:rotate(405deg)}}@keyframes antSpinMove{to{opacity:1}}
+    .app-loading {position: absolute;top:0px;left:0px;right:0px;bottom:0px;display: flex;justify-content: center;align-items: center;flex-direction: column;background: #fff;}
+    .app-loading__logo {margin-bottom: 30px;}
+    .app-loading__logo img {width: 90px;vertical-align: bottom;}
+    .app-loading__title {font-size: 24px;color: #333;margin-top: 30px;}
+    @keyframes loader {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+	
+  <script type="module" crossorigin src="/assets/index-bd31d7aa.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vue-8b3cc84a.js">
+  <link rel="modulepreload" crossorigin href="/assets/ant-design-vue-4f5cd1a2.js">
+  <link rel="stylesheet" href="/assets/index-b264ecd3.css">
+</head>
+<body>
+<noscript>
+  <strong>We're sorry but doesn't work properly without JavaScript
+    enabled. Please enable it to continue.</strong>
+</noscript>
+<div id="app" class="aminui">
+  <div class="app-loading">
+    <div class="app-loading__logo" id="app-loading__logo">
+<!--		<img src="/img/jiage.png"/>-->
+    </div>
+    <div><span class="dot dot-spin"><i></i><i></i><i></i><i></i></span></div>
+<!--    <div class="app-loading__title">佳格</div>-->
+  </div>
+</div>
+<script>
+	const logoDom = document.getElementById('app-loading__logo')
+	const loadingImg = document.createElement('img')
+
+	const timer = setInterval(() => {
+		if (window.DEFAULT_CONFIG_LIST) {
+			// console.log('window.DEFAULT_CONFIG_LIST', window.DEFAULT_CONFIG_LIST)
+			let baseConfig = null
+			if (window.DEFAULT_CONFIG_LIST.storageType === 'localStorage') {
+				baseConfig = localStorage.getItem(window.DEFAULT_CONFIG_LIST.STORAGE_PREFIX + 'SNOWY_SYS_BASE_CONFIG')
+			} else {
+				baseConfig = sessionStorage.getItem(window.DEFAULT_CONFIG_LIST.STORAGE_PREFIX + 'SNOWY_SYS_BASE_CONFIG')
+			}
+			if (baseConfig) {
+				clearInterval(timer)
+				// 加载中logo
+				const FAST_LOADING_IMAGE = JSON.parse(baseConfig).FAST_LOADING_IMAGE
+				if (FAST_LOADING_IMAGE !== '' && FAST_LOADING_IMAGE != null) {
+					loadingImg.src = FAST_LOADING_IMAGE
+				} else {
+					loadingImg.src = '/img/logo.png'
+				}
+				logoDom.appendChild(loadingImg)
+				// tab ico
+				const FAST_TBA_ICON = JSON.parse(baseConfig).FAST_TBA_ICON
+				let faviconUrl = ''
+				if (FAST_TBA_ICON !== '' && FAST_TBA_ICON != null) {
+					faviconUrl = FAST_TBA_ICON
+				} else {
+					faviconUrl = '/favicon.ico'
+				}
+				let favicon = document.querySelector('link[rel="icon"]')
+				if (favicon !== null) {
+					favicon.href = faviconUrl
+				} else {
+					favicon = document.createElement('link')
+					favicon.rel = 'icon'
+					favicon.href = faviconUrl
+					document.head.appendChild(favicon)
+				}
+			}
+		}
+	}, 20)
+
+
+</script>
+
+<script src="/common/index.js"></script>
+</body>
+</html>
