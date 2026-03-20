@@ -53,7 +53,7 @@
 				:key="item.markerId"
 				:marker-id="item.markerId"
 				:coordinate="[item.lng, item.lat]"
-				:offset="[0, -20]"
+				:offset="[item.pixelOffsetX, -20]"
 			>
 				<div class="route-marker" :class="`route-marker--${item.pointRole}`" :style="{ '--route-color': item.lineColor }">
 					<div class="route-marker__dot"></div>
@@ -131,10 +131,6 @@
 			<div class="map-stage__stat">
 				<span>漏水点</span>
 				<strong>{{ displayLeakMarkers.length }}</strong>
-			</div>
-			<div class="map-stage__stat">
-				<span>救援路线</span>
-				<strong>{{ displayRescueRouteList.length }}</strong>
 			</div>
 		</div>
 	</div>
@@ -280,21 +276,25 @@
 					markerId: `${item.routeId}-start`,
 					routeId: item.routeId,
 					routeName: item.routeName,
+					routeType: item.routeType,
 					lineColor: item.lineColor,
 					pointRole: 'start',
 					pointName: firstPoint.pointName,
 					lng: firstPoint.lng,
-					lat: firstPoint.lat
+					lat: firstPoint.lat,
+					pixelOffsetX: resolveRouteLabelOffset(item.routeType, 'start')
 				},
 				{
 					markerId: `${item.routeId}-end`,
 					routeId: item.routeId,
 					routeName: item.routeName,
+					routeType: item.routeType,
 					lineColor: item.lineColor,
 					pointRole: 'end',
 					pointName: lastPoint.pointName,
 					lng: lastPoint.lng,
-					lat: lastPoint.lat
+					lat: lastPoint.lat,
+					pixelOffsetX: resolveRouteLabelOffset(item.routeType, 'end')
 				}
 			]
 		})
@@ -579,18 +579,16 @@
 			'line-color': ['case', ['has', 'lineColor'], ['get', 'lineColor'], '#38bdf8'],
 			'line-width': ['interpolate', ['linear'], ['get', 'priorityLevel'], 1, 12.5 + edgePulse * 3.5, 3, 9 + edgePulse * 2.8],
 			'line-opacity': 0.14 + edgePulse * 0.08,
-			'line-offset': ['match', ['get', 'routeType'], 'drainage', -6, 'medical', 0, 'evacuation', 6, 'dispatch', 3, 0],
+			'line-offset': ['match', ['get', 'routeType'], 'drainage', -10, 'medical', 0, 'evacuation', 4, 'dispatch', 6, 0],
 			'line-blur': 1.3
 		}
 	})
 	const rescueRouteLinePaint = computed(() => {
-		const { ripplePrimary } = floodAnimationState.value
 		return {
 			'line-color': ['case', ['has', 'lineColor'], ['get', 'lineColor'], '#38bdf8'],
 			'line-width': ['interpolate', ['linear'], ['get', 'priorityLevel'], 1, 5.8, 3, 4.2],
 			'line-opacity': 0.94,
-			'line-offset': ['match', ['get', 'routeType'], 'drainage', -6, 'medical', 0, 'evacuation', 6, 'dispatch', 3, 0],
-			'line-dasharray': [1.1, 0.95 + ripplePrimary * 0.7]
+			'line-offset': ['match', ['get', 'routeType'], 'drainage', -10, 'medical', 0, 'evacuation', 4, 'dispatch', 6, 0]
 		}
 	})
 
@@ -762,73 +760,126 @@
 		const startPoint = safePointList[0]
 		const endPoint = safePointList[safePointList.length - 1]
 		const totalDistanceMeters = calculateDistanceMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
-		if (totalDistanceMeters < 160) {
+		if (totalDistanceMeters < 45) {
 			return safePointList
 		}
 
-		const routeOffsetMeters = resolveRouteOffsetMeters(routeType, priorityLevel, totalDistanceMeters)
+		const routeShapeConfig = resolveRouteShapeConfig(routeType, priorityLevel, totalDistanceMeters)
 		const displayPointList = [startPoint]
-		const startShoulder = buildRouteShoulderPoint(startPoint, endPoint, 0.2, routeOffsetMeters * 0.48, routeType, priorityLevel)
-		if (startShoulder) {
-			displayPointList.push(startShoulder)
-		}
+		const routePointEntryList = []
+		routeShapeConfig.controlPointList.forEach((controlPoint) => {
+			const routePoint = buildRouteControlPoint(startPoint, endPoint, routeShapeConfig, controlPoint)
+			if (routePoint) {
+				routePointEntryList.push({
+					ratio: Number(controlPoint.ratio),
+					point: routePoint
+				})
+			}
+		})
 
 		const intermediatePointList = safePointList.slice(1, -1)
-		if (intermediatePointList.length) {
-			intermediatePointList.forEach((item, index) => {
-				const ratio = (index + 1) / (intermediatePointList.length + 1)
-				displayPointList.push(
-					offsetRoutePoint(item, startPoint, endPoint, routeOffsetMeters * (0.92 - ratio * 0.18), routeType, priorityLevel)
-				)
-			})
-		} else {
-			const middleAnchor = buildRouteShoulderPoint(startPoint, endPoint, 0.5, routeOffsetMeters, routeType, priorityLevel)
-			if (middleAnchor) {
-				displayPointList.push(middleAnchor)
+		intermediatePointList.forEach((item, index) => {
+			const ratio = resolveRoutePointRatio(item, startPoint, endPoint, (index + 1) / (intermediatePointList.length + 1))
+			const routePoint = offsetRoutePoint(item, startPoint, endPoint, routeShapeConfig, ratio)
+			if (routePoint) {
+				routePointEntryList.push({
+					ratio,
+					point: routePoint
+				})
 			}
-		}
-
-		const endShoulder = buildRouteShoulderPoint(startPoint, endPoint, 0.8, routeOffsetMeters * 0.32, routeType, priorityLevel)
-		if (endShoulder) {
-			displayPointList.push(endShoulder)
-		}
+		})
+		routePointEntryList
+			.sort((left, right) => left.ratio - right.ratio)
+			.forEach((item) => {
+				displayPointList.push(item.point)
+			})
 		displayPointList.push(endPoint)
 
 		return dedupeRoutePointList(displayPointList)
 	}
 
-	function resolveRouteOffsetMeters(routeType, priorityLevel, totalDistanceMeters) {
-		const baseOffsetMap = {
-			drainage: 110,
-			medical: 162,
-			evacuation: 206,
-			dispatch: 138
+	function resolveRouteShapeConfig(routeType, priorityLevel, totalDistanceMeters) {
+		const shapeConfigMap = {
+			drainage: {
+				direction: -1,
+				offsetScale: 0.92,
+				controlPointList: [
+					{ ratio: 0.18, offsetScale: 0.74, tangentMeters: -34 },
+					{ ratio: 0.44, offsetScale: 1.08, tangentMeters: 12 },
+					{ ratio: 0.74, offsetScale: 0.42, tangentMeters: 24 }
+				]
+			},
+			medical: {
+				direction: 1,
+				offsetScale: 1.06,
+				controlPointList: [
+					{ ratio: 0.16, offsetScale: 0.3, tangentMeters: 18 },
+					{ ratio: 0.5, offsetScale: 1.34, tangentMeters: 0 },
+					{ ratio: 0.84, offsetScale: 0.56, tangentMeters: -20 }
+				]
+			},
+			evacuation: {
+				direction: 1,
+				offsetScale: 0.92,
+				controlPointList: [
+					{ ratio: 0.22, offsetScale: 0.34, tangentMeters: -6 },
+					{ ratio: 0.52, offsetScale: 0.82, tangentMeters: 2 },
+					{ ratio: 0.8, offsetScale: 0.42, tangentMeters: 12 }
+				]
+			},
+			dispatch: {
+				direction: Number(priorityLevel) % 2 === 0 ? -1 : 1,
+				offsetScale: 0.96,
+				controlPointList: [
+					{ ratio: 0.22, offsetScale: 0.62, tangentMeters: -18 },
+					{ ratio: 0.52, offsetScale: 0.9, tangentMeters: 0 },
+					{ ratio: 0.8, offsetScale: 0.46, tangentMeters: 18 }
+				]
+			}
 		}
-		const baseOffset = baseOffsetMap[routeType] || 132
-		const priorityBoost = Math.max(Number(priorityLevel || 1) - 1, 0) * 18
-		return Math.min(baseOffset + priorityBoost, Math.max(totalDistanceMeters * 0.28, 110))
+		const baseOffset = Math.min(Math.max(totalDistanceMeters * 0.34, 120), 280)
+		const selectedConfig = shapeConfigMap[routeType] || shapeConfigMap.dispatch
+		return {
+			routeType,
+			priorityLevel,
+			direction: selectedConfig.direction,
+			offsetMeters: baseOffset * selectedConfig.offsetScale,
+			controlPointList: selectedConfig.controlPointList
+		}
 	}
 
-	function buildRouteShoulderPoint(startPoint, endPoint, ratio, offsetMeters, routeType, priorityLevel) {
+	function buildRouteControlPoint(startPoint, endPoint, routeShapeConfig, controlPoint) {
 		const deltaMeters = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
 		const vectorLength = Math.sqrt(deltaMeters.eastMeters * deltaMeters.eastMeters + deltaMeters.northMeters * deltaMeters.northMeters)
 		if (vectorLength < 1) {
 			return null
 		}
-		const anchorLng = Number(startPoint.lng) + (Number(endPoint.lng) - Number(startPoint.lng)) * Number(ratio)
-		const anchorLat = Number(startPoint.lat) + (Number(endPoint.lat) - Number(startPoint.lat)) * Number(ratio)
-		const normalMeta = resolveRouteNormal(deltaMeters.eastMeters, deltaMeters.northMeters, offsetMeters, routeType, priorityLevel)
+		const anchorLng = Number(startPoint.lng) + (Number(endPoint.lng) - Number(startPoint.lng)) * Number(controlPoint.ratio)
+		const anchorLat = Number(startPoint.lat) + (Number(endPoint.lat) - Number(startPoint.lat)) * Number(controlPoint.ratio)
+		const normalMeta = resolveRouteNormal(
+			deltaMeters.eastMeters,
+			deltaMeters.northMeters,
+			routeShapeConfig.offsetMeters * Number(controlPoint.offsetScale),
+			routeShapeConfig.direction
+		)
+		const tangentMeta = resolveRouteTangent(deltaMeters.eastMeters, deltaMeters.northMeters, Number(controlPoint.tangentMeters || 0))
 		return {
 			pointName: '路径引导点',
 			pointRole: 'guide',
-			lng: offsetLng(anchorLng, anchorLat, normalMeta.eastOffsetMeters),
-			lat: offsetLat(anchorLat, normalMeta.northOffsetMeters)
+			lng: offsetLng(anchorLng, anchorLat, normalMeta.eastOffsetMeters + tangentMeta.eastOffsetMeters),
+			lat: offsetLat(anchorLat, normalMeta.northOffsetMeters + tangentMeta.northOffsetMeters)
 		}
 	}
 
-	function offsetRoutePoint(point, startPoint, endPoint, offsetMeters, routeType, priorityLevel) {
+	function offsetRoutePoint(point, startPoint, endPoint, routeShapeConfig, ratio = 0.5) {
 		const deltaMeters = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
-		const normalMeta = resolveRouteNormal(deltaMeters.eastMeters, deltaMeters.northMeters, offsetMeters, routeType, priorityLevel)
+		const ratioBias = 1 - Math.abs(Number(ratio) - 0.5) * 1.35
+		const normalMeta = resolveRouteNormal(
+			deltaMeters.eastMeters,
+			deltaMeters.northMeters,
+			routeShapeConfig.offsetMeters * Math.max(ratioBias, 0.28),
+			routeShapeConfig.direction
+		)
 		return {
 			...point,
 			lng: offsetLng(point.lng, point.lat, normalMeta.eastOffsetMeters),
@@ -836,7 +887,7 @@
 		}
 	}
 
-	function resolveRouteNormal(eastMeters, northMeters, offsetMeters, routeType, priorityLevel) {
+	function resolveRouteNormal(eastMeters, northMeters, offsetMeters, direction = 1) {
 		const vectorLength = Math.sqrt(Number(eastMeters) * Number(eastMeters) + Number(northMeters) * Number(northMeters))
 		if (vectorLength < 1) {
 			return {
@@ -844,24 +895,36 @@
 				northOffsetMeters: 0
 			}
 		}
-		const directionMap = {
-			drainage: -1,
-			medical: 1,
-			evacuation: 1,
-			dispatch: Number(priorityLevel) % 2 === 0 ? -1 : 1
-		}
-		const direction = directionMap[routeType] || 1
-		const routeScaleMap = {
-			drainage: 0.82,
-			medical: 1,
-			evacuation: 1.16,
-			dispatch: 0.9
-		}
-		const finalOffset = Number(offsetMeters) * (routeScaleMap[routeType] || 1) * direction
 		return {
-			eastOffsetMeters: (-Number(northMeters) / vectorLength) * finalOffset,
-			northOffsetMeters: (Number(eastMeters) / vectorLength) * finalOffset
+			eastOffsetMeters: (-Number(northMeters) / vectorLength) * Number(offsetMeters) * Number(direction),
+			northOffsetMeters: (Number(eastMeters) / vectorLength) * Number(offsetMeters) * Number(direction)
 		}
+	}
+
+	function resolveRouteTangent(eastMeters, northMeters, tangentMeters = 0) {
+		const vectorLength = Math.sqrt(Number(eastMeters) * Number(eastMeters) + Number(northMeters) * Number(northMeters))
+		if (vectorLength < 1 || !Number.isFinite(Number(tangentMeters)) || Number(tangentMeters) === 0) {
+			return {
+				eastOffsetMeters: 0,
+				northOffsetMeters: 0
+			}
+		}
+		return {
+			eastOffsetMeters: (Number(eastMeters) / vectorLength) * Number(tangentMeters),
+			northOffsetMeters: (Number(northMeters) / vectorLength) * Number(tangentMeters)
+		}
+	}
+
+	function resolveRoutePointRatio(point, startPoint, endPoint, fallbackRatio = 0.5) {
+		const totalDelta = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
+		const totalLengthSquare = totalDelta.eastMeters * totalDelta.eastMeters + totalDelta.northMeters * totalDelta.northMeters
+		if (totalLengthSquare < 1) {
+			return fallbackRatio
+		}
+		const pointDelta = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, point.lng, point.lat)
+		const projection =
+			(pointDelta.eastMeters * totalDelta.eastMeters + pointDelta.northMeters * totalDelta.northMeters) / totalLengthSquare
+		return clamp(projection, 0.12, 0.88)
 	}
 
 	function dedupeRoutePointList(pointList) {
@@ -877,6 +940,17 @@
 			}
 			return result
 		}, [])
+	}
+
+	function resolveRouteLabelOffset(routeType, pointRole) {
+		const offsetMap = {
+			drainage: -64,
+			medical: 0,
+			evacuation: 64,
+			dispatch: 36
+		}
+		const baseOffset = offsetMap[routeType] || 0
+		return pointRole === 'start' ? baseOffset : Math.round(baseOffset * 0.72)
 	}
 
 	function resolveNonOverlappingFloodDescriptors(descriptorList, fallbackCenter) {
