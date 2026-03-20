@@ -5,6 +5,7 @@ import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogRecordParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyPoiQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyRadiusUpdateParam;
+import vip.xiaonuo.biz.modular.emergency.result.EmergencyAiSuggestionResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyDrillLogResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyPoiQueryResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyPoiResult;
@@ -34,6 +35,11 @@ public interface EmergencyDrillService {
      * 获取当前灾情态势
      */
     EmergencyScenarioStateResult disasterState();
+
+    /**
+     * 获取AI救援方案建议
+     */
+    EmergencyAiSuggestionResult aiSuggestion();
 
     /**
      * 更新半径

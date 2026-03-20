@@ -15,6 +15,7 @@ import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyLogRecordParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyPoiQueryParam;
 import vip.xiaonuo.biz.modular.emergency.param.EmergencyRadiusUpdateParam;
+import vip.xiaonuo.biz.modular.emergency.result.EmergencyAiSuggestionResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyDrillLogResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyPoiQueryResult;
 import vip.xiaonuo.biz.modular.emergency.result.EmergencyPoiResult;
@@ -73,9 +74,19 @@ public class EmergencyDrillController {
     }
 
     /**
-     * 更新受灾区域半径
+     * 获取AI救援方案建议
      */
     @ApiOperationSupport(order = 4)
+    @ApiOperation("获取AI救援方案建议")
+    @GetMapping("/biz/emergency/drill/ai/suggestion")
+    public CommonResult<EmergencyAiSuggestionResult> aiSuggestion() {
+        return CommonResult.data(emergencyDrillService.aiSuggestion());
+    }
+
+    /**
+     * 更新受灾区域半径
+     */
+    @ApiOperationSupport(order = 5)
     @ApiOperation("更新受灾区域半径")
     @CommonLog("更新受灾区域半径")
     @PostMapping("/biz/emergency/drill/disaster/updateRadius")
@@ -86,7 +97,7 @@ public class EmergencyDrillController {
     /**
      * 订阅灾情状态推送
      */
-    @ApiOperationSupport(order = 5)
+    @ApiOperationSupport(order = 6)
     @ApiOperation("订阅灾情状态推送")
     @GetMapping(value = "/biz/emergency/drill/disaster/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter disasterStream() {
@@ -96,7 +107,7 @@ public class EmergencyDrillController {
     /**
      * 获取演练操作日志
      */
-    @ApiOperationSupport(order = 6)
+    @ApiOperationSupport(order = 7)
     @ApiOperation("获取演练操作日志")
     @GetMapping("/biz/emergency/drill/log/list")
     public CommonResult<List<EmergencyDrillLogResult>> logList(@Valid EmergencyLogQueryParam emergencyLogQueryParam) {
@@ -106,7 +117,7 @@ public class EmergencyDrillController {
     /**
      * 记录演练操作日志
      */
-    @ApiOperationSupport(order = 7)
+    @ApiOperationSupport(order = 8)
     @ApiOperation("记录演练操作日志")
     @PostMapping("/biz/emergency/drill/log/record")
     public CommonResult<Void> recordLog(@RequestBody @Valid EmergencyLogRecordParam emergencyLogRecordParam) {

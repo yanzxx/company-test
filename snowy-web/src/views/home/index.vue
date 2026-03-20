@@ -141,6 +141,7 @@
 						:poi-list="poiList"
 						:affected-poi-list="displayScenarioPoiList"
 						:leak-point-list="leakPointList"
+						:rescue-route-list="adoptedRescueRouteList"
 						:signal-counter="scenarioState.signalCounter"
 						:latest-signal="latestSignal"
 						:level-key="responseLevel.key"
@@ -272,7 +273,11 @@
 
 			<div class="assistant-message">
 				<div class="assistant-message__bar"></div>
-				<p>{{ aiSuggestion }}</p>
+				<div class="assistant-message__meta">
+					<span>{{ aiSuggestionRiskSummary }}</span>
+					<span>{{ aiSuggestionGeneratedTime }}</span>
+				</div>
+				<p>{{ aiSuggestionLoading ? 'AI 正在推演最新救援方案...' : aiSuggestion }}</p>
 			</div>
 
 			<div class="footer-actions">
@@ -283,6 +288,10 @@
 				</div>
 				<button class="footer-button footer-button--primary" type="button" @click="submitRadiusUpdate()">
 					{{ updating ? '更新中' : '更新半径' }}
+				</button>
+				<button class="footer-button footer-button--secondary" type="button" @click="handleOpenPromptDrawer()">
+					<CodeOutlined />
+					<span>Prompt 辅助</span>
 				</button>
 				<button class="footer-button footer-button--secondary" type="button" @click="acceptSuggestion()">
 					采纳建议
@@ -352,6 +361,76 @@
 				<div v-if="!filteredLogs.length" class="empty-panel">暂无匹配的演练日志。</div>
 			</div>
 		</a-drawer>
+
+		<a-drawer
+			v-model:visible="promptDrawerOpen"
+			title="AI Prompt 辅助"
+			placement="left"
+			:width="620"
+			wrapClassName="ai-prompt-drawer"
+			:mask-style="{ background: 'rgba(2, 8, 23, 0.54)', backdropFilter: 'blur(4px)' }"
+			:content-wrapper-style="{ boxShadow: '18px 0 42px rgba(0, 0, 0, 0.34)' }"
+			:drawer-style="{
+				background: 'radial-gradient(circle at top right, rgba(0, 228, 255, 0.08), transparent 24%), linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98))',
+				borderRight: '1px solid rgba(122, 218, 255, 0.14)',
+				color: 'var(--text-main)'
+			}"
+			:header-style="{ padding: '18px 20px 16px', background: 'transparent', borderBottom: '1px solid rgba(122, 218, 255, 0.12)' }"
+			:body-style="{ padding: '18px 20px 20px', background: 'transparent' }"
+		>
+			<div class="prompt-panel">
+				<div class="prompt-panel__meta">
+					<div>
+						<strong>{{ aiSuggestionProvider }}</strong>
+						<p>{{ aiSuggestionMode }}</p>
+					</div>
+					<button class="drawer-toolbar__refresh" type="button" @click="loadAiSuggestion()">
+						<SyncOutlined :spin="aiSuggestionLoading" />
+						<span>重新生成</span>
+					</button>
+				</div>
+				<div class="prompt-card">
+					<h4>当前救援建议</h4>
+					<p>{{ aiSuggestion }}</p>
+				</div>
+				<div class="prompt-card">
+					<h4>行动要点</h4>
+					<div class="prompt-action-list">
+						<div v-for="item in aiSuggestionActions" :key="item" class="prompt-action-item">{{ item }}</div>
+					</div>
+				</div>
+				<div class="prompt-card">
+					<h4>AI 规划救援路线</h4>
+					<div class="prompt-route-list">
+						<div
+							v-for="route in aiSuggestionRoutes"
+							:key="route.routeId"
+							class="prompt-route-item"
+							:style="{ '--route-color': route.lineColor, borderColor: route.lineColor }"
+						>
+							<div class="prompt-route-item__head">
+								<strong>{{ route.routeName }}</strong>
+								<span>{{ route.estimatedMinutes }} 分钟</span>
+							</div>
+							<p>{{ route.description }}</p>
+							<div class="prompt-route-item__path">{{ route.startName }} → {{ route.endName }}</div>
+						</div>
+					</div>
+				</div>
+				<div class="prompt-card">
+					<h4>GeoJSON 示例结构</h4>
+					<pre class="prompt-template">{{ aiGeoJsonExample }}</pre>
+				</div>
+				<div class="prompt-card">
+					<h4>空间计算代码示例</h4>
+					<pre class="prompt-template">{{ aiSpatialCodeExample }}</pre>
+				</div>
+				<div class="prompt-card">
+					<h4>{{ aiPromptTitle }}</h4>
+					<pre class="prompt-template">{{ aiPromptTemplate }}</pre>
+				</div>
+			</div>
+		</a-drawer>
 	</div>
 </AdaptBody>
 </template>
@@ -365,6 +444,7 @@
 		AimOutlined,
 		BankOutlined,
 		CarOutlined,
+		CodeOutlined,
 		ClockCircleOutlined,
 		ControlOutlined,
 		ExclamationCircleOutlined,
@@ -459,28 +539,18 @@
 		排涝设施: { icon: ControlOutlined, color: '#3ee7ff', glow: '0 0 12px rgba(62, 231, 255, 0.35)' },
 		应急指挥: { icon: AimOutlined, color: '#24f0cf', glow: '0 0 12px rgba(36, 240, 207, 0.35)' }
 	}
-	const facilityTypeLabelMap = {
-		医院: '医疗机构',
-		学校: '教育机构',
-		避险点: '避险设施',
-		电力设施: '电力设施',
-		消防设施: '消防设施',
-		物资仓储: '物资仓储',
-		社区服务: '社区服务',
-		交通枢纽: '交通枢纽',
-		排涝设施: '排涝设施',
-		应急指挥: '应急指挥'
-	}
-	const facilityTypeOrder = Object.keys(poiMetaMap)
-
 	const globalStore = useGlobalStore()
 	const { userInfo } = storeToRefs(globalStore)
 	const loading = ref(false)
 	const updating = ref(false)
 	const logDrawerOpen = ref(false)
+	const promptDrawerOpen = ref(false)
 	const logLoading = ref(false)
+	const aiSuggestionLoading = ref(false)
 	const logKeyword = ref('')
 	const activeLogFilter = ref('all')
+	const aiSuggestionState = ref(null)
+	const adoptedRescueRouteList = ref([])
 	const streamMode = ref('connecting')
 	const streamHint = ref('正在连接实时推送')
 	const now = ref(dayjs())
@@ -560,16 +630,18 @@
 		}, {})
 	)
 
-	const facilityLegend = computed(() => [
-		{ label: '医疗机构', icon: MedicineBoxOutlined, color: poiMetaMap.医院.color },
-		{ label: '教育机构', icon: BankOutlined, color: poiMetaMap.学校.color },
-		{ label: '避险设施', icon: SafetyCertificateOutlined, color: poiMetaMap.避险点.color },
-		{ label: '消防设施', icon: AlertOutlined, color: poiMetaMap.消防设施.color },
-		{ label: '电力设施', icon: ThunderboltOutlined, color: poiMetaMap.电力设施.color },
-		{ label: '交通枢纽', icon: CarOutlined, color: poiMetaMap.交通枢纽.color },
-		{ label: '排涝设施', icon: ControlOutlined, color: poiMetaMap.排涝设施.color },
-		{ label: '应急指挥', icon: AimOutlined, color: poiMetaMap.应急指挥.color }
-	])
+	const totalFacilityStats = computed(() =>
+		(Array.isArray(scenarioState.value.totalFacilityStats) ? scenarioState.value.totalFacilityStats : []).map((item) =>
+			decorateFacilityStat(item)
+		)
+	)
+	const facilityLegend = computed(() =>
+		totalFacilityStats.value.map((item) => ({
+			label: item.label,
+			icon: item.icon,
+			color: item.color
+		}))
+	)
 	const floodDepthLegend = computed(() => [
 		{
 			label: '轻度积水区 (<= 0.8m)',
@@ -597,46 +669,11 @@
 		}
 	])
 
-	const affectedFacilityStats = computed(() => {
-		const typeCountMap = displayScenarioPoiList.value.reduce((result, item) => {
-			if (!item?.type) {
-				return result
-			}
-			result[item.type] = Number(result[item.type] || 0) + 1
-			return result
-		}, {})
-		const orderedStats = facilityTypeOrder
-			.map((type) => ({
-				type,
-				label: facilityTypeLabelMap[type] || type,
-				count: Number(typeCountMap[type] || 0),
-				icon: poiMetaMap[type]?.icon || AimOutlined,
-				color: poiMetaMap[type]?.color || '#8ee7ff'
-			}))
-			.filter((item) => item.count > 0)
-			.sort((left, right) => {
-				if (right.count !== left.count) {
-					return right.count - left.count
-				}
-				return facilityTypeOrder.indexOf(left.type) - facilityTypeOrder.indexOf(right.type)
-			})
-		const extraTypeStats = Object.keys(typeCountMap)
-			.filter((type) => !facilityTypeOrder.includes(type))
-			.map((type) => ({
-				type,
-				label: facilityTypeLabelMap[type] || type,
-				count: Number(typeCountMap[type] || 0),
-				icon: poiMetaMap[type]?.icon || AimOutlined,
-				color: poiMetaMap[type]?.color || '#8ee7ff'
-			}))
-			.sort((left, right) => {
-				if (right.count !== left.count) {
-					return right.count - left.count
-				}
-				return left.label.localeCompare(right.label, 'zh-Hans-CN')
-			})
-		return [...orderedStats, ...extraTypeStats]
-	})
+	const affectedFacilityStats = computed(() =>
+		(Array.isArray(scenarioState.value.affectedFacilityStats) ? scenarioState.value.affectedFacilityStats : []).map((item) =>
+			decorateFacilityStat(item)
+		)
+	)
 	const facilityStats = computed(() => affectedFacilityStats.value)
 
 	const formattedLogs = computed(() =>
@@ -700,7 +737,7 @@
 		return entries.slice(0, 10)
 	})
 
-	const aiSuggestion = computed(() => {
+	const aiSuggestionFallback = computed(() => {
 		if (!latestSignal.value) {
 			return `AI 建议：态势数据已接入，建议先核对 ${scenarioPoiList.value.length} 个圈内设施并确认主受灾半径。`
 		}
@@ -712,8 +749,33 @@
 		}
 		return `AI 建议：险情仍在演进，建议继续扩大监测圈并优先保护 ${topFacilityLabel.value}。`
 	})
+	const aiSuggestion = computed(() => aiSuggestionState.value?.suggestion || aiSuggestionFallback.value)
+	const aiSuggestionRiskSummary = computed(() => aiSuggestionState.value?.riskSummary || `圈内设施 ${displayScenarioPoiList.value.length} 个`)
+	const aiSuggestionProvider = computed(() => aiSuggestionState.value?.providerName || '规则推演引擎')
+	const aiSuggestionMode = computed(() => aiSuggestionState.value?.modeLabel || 'Fallback Strategy')
+	const aiSuggestionActions = computed(() => {
+		const actionList = Array.isArray(aiSuggestionState.value?.actionList) ? aiSuggestionState.value.actionList : []
+		if (actionList.length) {
+			return actionList
+		}
+		return [
+			`优先保护 ${topFacilityLabel.value}，保持圈内设施滚动复核。`,
+			`围绕当前半径 ${Math.round(Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS))} 米范围持续巡检。`
+		]
+	})
+	const aiPromptTitle = computed(() => aiSuggestionState.value?.promptTitle || 'GeoJSON / 空间计算 Prompt 辅助')
+	const aiPromptTemplate = computed(() => aiSuggestionState.value?.promptTemplate || buildPromptTemplateFallback())
+	const aiGeoJsonExample = computed(() => aiSuggestionState.value?.geoJsonExample || buildGeoJsonExampleFallback())
+	const aiSpatialCodeExample = computed(() => aiSuggestionState.value?.spatialCodeExample || buildSpatialCodeExampleFallback())
+	const aiSuggestionRoutes = computed(() => {
+		const backendRouteList = normalizeRescueRouteList(aiSuggestionState.value?.routeList)
+		return backendRouteList.length ? backendRouteList : buildRescueRouteFallback()
+	})
+	const aiSuggestionGeneratedTime = computed(() =>
+		aiSuggestionState.value?.generatedTime ? `生成于 ${formatTime(aiSuggestionState.value.generatedTime)}` : '本地回退建议'
+	)
 
-	const topFacilityLabel = computed(() => affectedFacilityStats.value[0]?.label || '关键设施')
+	const topFacilityLabel = computed(() => affectedFacilityStats.value[0]?.label || totalFacilityStats.value[0]?.label || '关键设施')
 
 	function createScenarioState() {
 		return {
@@ -723,9 +785,22 @@
 			totalPoiCount: 0,
 			poiCountInRange: 0,
 			affectedPoiList: [],
+			totalFacilityStats: [],
+			affectedFacilityStats: [],
 			signalCounter: 0,
 			latestSignal: null,
 			leakPointList: []
+		}
+	}
+
+	function decorateFacilityStat(item) {
+		const type = item?.type || '设施'
+		return {
+			type,
+			label: type,
+			count: Number(item?.count || 0),
+			icon: poiMetaMap[type]?.icon || AimOutlined,
+			color: poiMetaMap[type]?.color || '#8ee7ff'
 		}
 	}
 
@@ -793,6 +868,13 @@
 		refreshLogPanel(false)
 	}
 
+	async function handleOpenPromptDrawer() {
+		promptDrawerOpen.value = true
+		if (!aiSuggestionState.value) {
+			await loadAiSuggestion(false)
+		}
+	}
+
 	function createWarningEntryFromLog(logItem, fallbackId) {
 		if (!logItem) {
 			return null
@@ -850,7 +932,444 @@
 	}
 
 	function formatCount(value) {
-		return `${Number(value || 0).toString().padStart(2, '0')}`
+		return `${Number(value || 0)}`
+	}
+
+	function buildPromptTemplateFallback() {
+		return [
+			'你是城市内涝应急 GIS 助手，请基于以下态势输出救援调度建议、GeoJSON 示例、救援路线和空间计算代码。',
+			`- 灾情中心: (${Number(scenarioState.value.centerLng || DEFAULT_CENTER_LNG).toFixed(6)}, ${Number(scenarioState.value.centerLat || DEFAULT_CENTER_LAT).toFixed(6)})`,
+			`- 受灾半径: ${Math.round(Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS))} 米`,
+			`- 圈内设施数: ${displayScenarioPoiList.value.length} 个`,
+			`- 主要受灾设施: ${topFacilityLabel.value}`,
+			`- 当前建议路线数: ${buildRescueRouteFallback().length} 条`,
+			'- 输出字段: plan, routeList, geojson, spatialCode, riskNotes'
+		].join('\n')
+	}
+
+	function buildGeoJsonExampleFallback() {
+		const centerLng = Number(scenarioState.value.centerLng || DEFAULT_CENTER_LNG)
+		const centerLat = Number(scenarioState.value.centerLat || DEFAULT_CENTER_LAT)
+		const radiusMeters = Math.round(Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS))
+		const circleCoordinates = Array.from({ length: 25 }, (_, index) => {
+			const angle = (Math.PI * 2 * index) / 24
+			const eastMeters = Math.cos(angle) * radiusMeters
+			const northMeters = Math.sin(angle) * radiusMeters
+			return [
+				Number((centerLng + eastMeters / (111320 * Math.cos((centerLat * Math.PI) / 180))).toFixed(6)),
+				Number((centerLat + northMeters / 110540).toFixed(6))
+			]
+		})
+		const featureCollection = {
+			type: 'FeatureCollection',
+			features: [
+				{
+					type: 'Feature',
+					properties: {
+						kind: 'disaster-center',
+						radiusMeters,
+						affectedPoiCount: displayScenarioPoiList.value.length
+					},
+					geometry: {
+						type: 'Point',
+						coordinates: [Number(centerLng.toFixed(6)), Number(centerLat.toFixed(6))]
+					}
+				},
+				{
+					type: 'Feature',
+					properties: {
+						kind: 'flood-range',
+						radiusMeters,
+						warningLevel: responseLevel.value.label
+					},
+					geometry: {
+						type: 'Polygon',
+						coordinates: [circleCoordinates]
+					}
+				},
+				...buildRescueRouteFallback().map((route) => ({
+					type: 'Feature',
+					properties: {
+						kind: 'rescue-route',
+						routeId: route.routeId,
+						routeName: route.routeName,
+						routeType: route.routeType,
+						lineColor: route.lineColor
+					},
+					geometry: {
+						type: 'LineString',
+						coordinates: route.pointList.map((point) => [Number(point.lng.toFixed(6)), Number(point.lat.toFixed(6))])
+					}
+				})),
+				...displayScenarioPoiList.value.slice(0, 6).map((item) => ({
+					type: 'Feature',
+					properties: {
+						id: item.id,
+						name: item.name,
+						type: item.type,
+						distanceMeters: Number(item.distanceMeters || 0)
+					},
+					geometry: {
+						type: 'Point',
+						coordinates: [Number(Number(item.lng).toFixed(6)), Number(Number(item.lat).toFixed(6))]
+					}
+				})),
+				...leakPointList.value.slice(0, 2).map((item) => ({
+					type: 'Feature',
+					properties: {
+						kind: 'leak-point',
+						name: item.name
+					},
+					geometry: {
+						type: 'Point',
+						coordinates: [Number(Number(item.lng).toFixed(6)), Number(Number(item.lat).toFixed(6))]
+					}
+				}))
+			]
+		}
+		return JSON.stringify(featureCollection, null, 2)
+	}
+
+	function buildSpatialCodeExampleFallback() {
+		return [
+			`const center = [${Number(scenarioState.value.centerLng || DEFAULT_CENTER_LNG).toFixed(6)}, ${Number(scenarioState.value.centerLat || DEFAULT_CENTER_LAT).toFixed(6)}]`,
+			`const radiusMeters = ${Math.round(Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS))}`,
+			'',
+			'function haversineMeters([lng1, lat1], [lng2, lat2]) {',
+			'  const toRad = (value) => (value * Math.PI) / 180',
+			'  const dLat = toRad(lat2 - lat1)',
+			'  const dLng = toRad(lng2 - lng1)',
+			'  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2',
+			'  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))',
+			'}',
+			'',
+			'export function filterAffectedPoi(poiList) {',
+			'  return poiList',
+			'    .map((poi) => ({ ...poi, distanceMeters: haversineMeters(center, [poi.lng, poi.lat]) }))',
+			'    .filter((poi) => poi.distanceMeters <= radiusMeters)',
+			'    .sort((left, right) => left.distanceMeters - right.distanceMeters)',
+			'}',
+			'',
+			'export function spreadClusteredPoi(poiList, minGapMeters = 60) {',
+			'  const meterToLng = (meters, lat) => meters / (111320 * Math.cos((lat * Math.PI) / 180))',
+			'  const meterToLat = (meters) => meters / 110540',
+			'  return poiList.map((poi, index) => {',
+			'    const angle = ((index % 12) / 12) * Math.PI * 2',
+			'    const ring = Math.floor(index / 12) + 1',
+			'    const offsetMeters = ring * minGapMeters',
+			'    return {',
+			'      ...poi,',
+			'      renderLng: poi.lng + meterToLng(Math.cos(angle) * offsetMeters, poi.lat),',
+			'      renderLat: poi.lat + meterToLat(Math.sin(angle) * offsetMeters)',
+			'    }',
+			'  })',
+			'}',
+			'',
+			'export function buildRescueRoute(start, end, bendMeters = 90) {',
+			'  const meterToLng = (meters, lat) => meters / (111320 * Math.cos((lat * Math.PI) / 180))',
+			'  const meterToLat = (meters) => meters / 110540',
+			'  const dx = end[0] - start[0]',
+			'  const dy = end[1] - start[1]',
+			'  const norm = Math.sqrt(dx * dx + dy * dy) || 1',
+			'  const nx = (-dy / norm) * bendMeters',
+			'  const ny = (dx / norm) * bendMeters',
+			'  const midLng = (start[0] + end[0]) / 2',
+			'  const midLat = (start[1] + end[1]) / 2',
+			'  return [',
+			'    start,',
+			'    [midLng + meterToLng(nx, midLat), midLat + meterToLat(ny)],',
+			'    end',
+			'  ]',
+			'}'
+		].join('\n')
+	}
+
+	function normalizeRescueRouteList(routeList) {
+		return (Array.isArray(routeList) ? routeList : [])
+			.map((route, index) => {
+				const pointList = (Array.isArray(route?.pointList) ? route.pointList : [])
+					.filter((item) => isValidCoordinate(item?.lng, item?.lat))
+					.map((item, pointIndex) => ({
+						pointName: item.pointName || `节点${pointIndex + 1}`,
+						pointRole: item.pointRole || (pointIndex === 0 ? 'start' : pointIndex === (route.pointList?.length || 0) - 1 ? 'end' : 'via'),
+						lng: Number(item.lng),
+						lat: Number(item.lat)
+					}))
+				if (pointList.length < 2) {
+					return null
+				}
+				return {
+					routeId: route.routeId || `ai-route-${index + 1}`,
+					routeName: route.routeName || `救援路线${index + 1}`,
+					routeType: route.routeType || 'dispatch',
+					description: route.description || 'AI 生成的救援调度路线',
+					priorityLevel: Number(route.priorityLevel || index + 1),
+					lineColor: route.lineColor || '#38bdf8',
+					estimatedMinutes: Math.max(Number(route.estimatedMinutes || 0), 1),
+					pointList,
+					startName: pointList[0].pointName,
+					endName: pointList[pointList.length - 1].pointName
+				}
+			})
+			.filter(Boolean)
+	}
+
+	function buildRescueRouteFallback() {
+		const disasterCenter = resolveFallbackDisasterCenter()
+		const routeList = []
+		const drainageOrigin = findNearestPoiByTypes(poiList.value, disasterCenter.lng, disasterCenter.lat, ['排涝设施', '消防设施', '应急指挥'])
+		const nearestLeak = findNearestLeakPointFallback(disasterCenter.lng, disasterCenter.lat)
+		if (drainageOrigin) {
+			routeList.push(
+				buildFallbackRescueRoute({
+					routeId: 'fallback-drainage-route',
+					routeName: '排涝抢险路线',
+					routeType: 'drainage',
+					lineColor: '#38bdf8',
+					priorityLevel: 1,
+					description: '排涝抢险组优先进入漏水点周边，建立近场排水通道。',
+					startPoi: drainageOrigin,
+					endPoint: nearestLeak
+						? { pointName: nearestLeak.name, lng: Number(nearestLeak.lng), lat: Number(nearestLeak.lat) }
+						: { pointName: '灾情中心', lng: disasterCenter.lng, lat: disasterCenter.lat },
+					disasterCenter
+				})
+			)
+		}
+		const medicalTarget = findPriorityAffectedPoi(disasterCenter.lng, disasterCenter.lat, ['医院', '学校', '社区服务', '交通枢纽', '物资仓储'])
+		const medicalOrigin = findNearestPoiByTypes(
+			poiList.value,
+			medicalTarget?.lng ?? disasterCenter.lng,
+			medicalTarget?.lat ?? disasterCenter.lat,
+			['医院', '应急指挥', '消防设施'],
+			medicalTarget?.id
+		)
+		if (medicalOrigin) {
+			routeList.push(
+				buildFallbackRescueRoute({
+					routeId: 'fallback-medical-route',
+					routeName: '医疗救援路线',
+					routeType: 'medical',
+					lineColor: '#fb7185',
+					priorityLevel: 2,
+					description: '医疗救援组前往重点受灾设施，建立现场救治与转运节点。',
+					startPoi: medicalOrigin,
+					endPoint: medicalTarget
+						? { pointName: medicalTarget.name, lng: Number(medicalTarget.lng), lat: Number(medicalTarget.lat) }
+						: { pointName: '灾情中心', lng: disasterCenter.lng, lat: disasterCenter.lat },
+					disasterCenter
+				})
+			)
+		}
+		const evacuationOrigin = findPriorityAffectedPoi(disasterCenter.lng, disasterCenter.lat, ['学校', '社区服务', '医院', '交通枢纽'])
+		if (evacuationOrigin) {
+			const evacuationTarget = findNearestPoiByTypes(
+				poiList.value,
+				evacuationOrigin.lng,
+				evacuationOrigin.lat,
+				['避险点', '应急指挥'],
+				evacuationOrigin.id
+			)
+			if (evacuationTarget) {
+				routeList.push(
+					buildFallbackRescueRoute({
+						routeId: 'fallback-evacuation-route',
+						routeName: '人员转运路线',
+						routeType: 'evacuation',
+						lineColor: '#22c55e',
+						priorityLevel: 3,
+						description: '疏散转运组沿最近避险通道组织人员分批转运。',
+						startPoi: evacuationOrigin,
+						endPoint: { pointName: evacuationTarget.name, lng: Number(evacuationTarget.lng), lat: Number(evacuationTarget.lat) },
+						disasterCenter
+					})
+				)
+			}
+		}
+		return routeList.filter(Boolean).slice(0, 3)
+	}
+
+	function resolveFallbackDisasterCenter() {
+		const weightedPoints = []
+		leakPointList.value.forEach((item) => {
+			if (isValidCoordinate(item?.lng, item?.lat)) {
+				weightedPoints.push({ lng: Number(item.lng), lat: Number(item.lat), weight: 1.65 })
+			}
+		})
+		displayScenarioPoiList.value.forEach((item) => {
+			if (isValidCoordinate(item?.lng, item?.lat)) {
+				weightedPoints.push({ lng: Number(item.lng), lat: Number(item.lat), weight: resolveAffectedPoiWeight(item.type) })
+			}
+		})
+		if (!weightedPoints.length) {
+			return {
+				lng: Number(scenarioState.value.centerLng || DEFAULT_CENTER_LNG),
+				lat: Number(scenarioState.value.centerLat || DEFAULT_CENTER_LAT)
+			}
+		}
+		const totalWeight = weightedPoints.reduce((total, item) => total + item.weight, 0)
+		return {
+			lng: weightedPoints.reduce((total, item) => total + item.lng * item.weight, 0) / totalWeight,
+			lat: weightedPoints.reduce((total, item) => total + item.lat * item.weight, 0) / totalWeight
+		}
+	}
+
+	function resolveAffectedPoiWeight(type) {
+		if (['医院', '学校', '交通枢纽'].includes(type)) {
+			return 1.35
+		}
+		if (['排涝设施', '消防设施', '应急指挥'].includes(type)) {
+			return 1.18
+		}
+		return 1
+	}
+
+	function findNearestPoiByTypes(sourceList, referenceLng, referenceLat, typeList = [], excludeId = '') {
+		return (Array.isArray(sourceList) ? sourceList : [])
+			.filter((item) => item && typeList.includes(item.type) && isValidCoordinate(item.lng, item.lat))
+			.filter((item) => !excludeId || item.id !== excludeId)
+			.slice()
+			.sort(
+				(left, right) =>
+					calculateDistanceMeters(left.lng, left.lat, referenceLng, referenceLat) -
+					calculateDistanceMeters(right.lng, right.lat, referenceLng, referenceLat)
+			)[0] || null
+	}
+
+	function findPriorityAffectedPoi(referenceLng, referenceLat, typeList = []) {
+		for (const type of typeList) {
+			const matched = displayScenarioPoiList.value
+				.filter((item) => item?.type === type && isValidCoordinate(item.lng, item.lat))
+				.slice()
+				.sort(
+					(left, right) =>
+						calculateDistanceMeters(left.lng, left.lat, referenceLng, referenceLat) -
+						calculateDistanceMeters(right.lng, right.lat, referenceLng, referenceLat)
+				)[0]
+			if (matched) {
+				return matched
+			}
+		}
+		return (
+			displayScenarioPoiList.value
+				.filter((item) => isValidCoordinate(item.lng, item.lat))
+				.slice()
+				.sort(
+					(left, right) =>
+						calculateDistanceMeters(left.lng, left.lat, referenceLng, referenceLat) -
+						calculateDistanceMeters(right.lng, right.lat, referenceLng, referenceLat)
+				)[0] || null
+		)
+	}
+
+	function findNearestLeakPointFallback(referenceLng, referenceLat) {
+		return (
+			leakPointList.value
+				.filter((item) => isValidCoordinate(item?.lng, item?.lat))
+				.slice()
+				.sort(
+					(left, right) =>
+						calculateDistanceMeters(left.lng, left.lat, referenceLng, referenceLat) -
+						calculateDistanceMeters(right.lng, right.lat, referenceLng, referenceLat)
+				)[0] || null
+		)
+	}
+
+	function buildFallbackRescueRoute({ routeId, routeName, routeType, lineColor, priorityLevel, description, startPoi, endPoint, disasterCenter }) {
+		if (!startPoi || !endPoint || !isValidCoordinate(startPoi.lng, startPoi.lat) || !isValidCoordinate(endPoint.lng, endPoint.lat)) {
+			return null
+		}
+		const pointList = buildFallbackRoutePoints(startPoi, endPoint, disasterCenter, priorityLevel)
+		if (pointList.length < 2) {
+			return null
+		}
+		return {
+			routeId,
+			routeName,
+			routeType,
+			lineColor,
+			priorityLevel,
+			description,
+			estimatedMinutes: estimateFallbackRouteMinutes(pointList, routeType),
+			pointList,
+			startName: pointList[0].pointName,
+			endName: pointList[pointList.length - 1].pointName
+		}
+	}
+
+	function buildFallbackRoutePoints(startPoi, endPoint, disasterCenter, priorityLevel) {
+		const pointList = [
+			{
+				pointName: startPoi.name || '起点',
+				pointRole: 'start',
+				lng: Number(startPoi.lng),
+				lat: Number(startPoi.lat)
+			}
+		]
+		const distanceMeters = calculateDistanceMeters(startPoi.lng, startPoi.lat, endPoint.lng, endPoint.lat)
+		if (distanceMeters >= 180) {
+			const viaPoint = buildFallbackRouteViaPoint(startPoi, endPoint, disasterCenter, priorityLevel)
+			if (viaPoint) {
+				pointList.push(viaPoint)
+			}
+		}
+		pointList.push({
+			pointName: endPoint.pointName || endPoint.name || '终点',
+			pointRole: 'end',
+			lng: Number(endPoint.lng),
+			lat: Number(endPoint.lat)
+		})
+		return pointList
+	}
+
+	function buildFallbackRouteViaPoint(startPoi, endPoint, disasterCenter, priorityLevel) {
+		const baseLng = (Number(startPoi.lng) + Number(endPoint.lng) + Number(disasterCenter.lng)) / 3
+		const baseLat = (Number(startPoi.lat) + Number(endPoint.lat) + Number(disasterCenter.lat)) / 3
+		const eastMeters =
+			(Number(endPoint.lng) - Number(startPoi.lng)) * 111320 * Math.max(Math.cos((baseLat * Math.PI) / 180), 0.2)
+		const northMeters = (Number(endPoint.lat) - Number(startPoi.lat)) * 110540
+		const length = Math.sqrt(eastMeters * eastMeters + northMeters * northMeters)
+		if (length < 1) {
+			return null
+		}
+		const bendMeters = Math.max(55, Math.min(length * 0.18, 150))
+		const direction = priorityLevel % 2 === 0 ? -1 : 1
+		return {
+			pointName: '中继调度点',
+			pointRole: 'via',
+			lng: offsetLngByMeters(baseLng, baseLat, (-northMeters / length) * bendMeters * direction),
+			lat: offsetLatByMeters(baseLat, (eastMeters / length) * bendMeters * direction)
+		}
+	}
+
+	function estimateFallbackRouteMinutes(pointList, routeType) {
+		const totalDistanceMeters = pointList.slice(0, -1).reduce((total, item, index) => {
+			const nextPoint = pointList[index + 1]
+			return total + calculateDistanceMeters(item.lng, item.lat, nextPoint.lng, nextPoint.lat)
+		}, 0)
+		const speedMetersPerMinute = routeType === 'medical' ? 560 : routeType === 'evacuation' ? 420 : 460
+		return Math.max(Math.ceil(totalDistanceMeters / speedMetersPerMinute) + 2, 3)
+	}
+
+	function offsetLngByMeters(lng, lat, eastMeters) {
+		return Number(lng) + Number(eastMeters) / (111320 * Math.max(Math.cos((Number(lat) * Math.PI) / 180), 0.2))
+	}
+
+	function offsetLatByMeters(lat, northMeters) {
+		return Number(lat) + Number(northMeters) / 110540
+	}
+
+	function calculateDistanceMeters(fromLng, fromLat, toLng, toLat) {
+		const earthRadius = 6371000
+		const dLat = ((Number(toLat) - Number(fromLat)) * Math.PI) / 180
+		const dLng = ((Number(toLng) - Number(fromLng)) * Math.PI) / 180
+		const a =
+			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+			Math.cos((Number(fromLat) * Math.PI) / 180) *
+				Math.cos((Number(toLat) * Math.PI) / 180) *
+				Math.sin(dLng / 2) *
+				Math.sin(dLng / 2)
+		return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 	}
 
 	function isValidCoordinate(lng, lat) {
@@ -903,6 +1422,20 @@
 		}
 	}
 
+	async function loadAiSuggestion(showError = false) {
+		aiSuggestionLoading.value = true
+		try {
+			const data = await emergencyDrillApi.getAiSuggestion()
+			aiSuggestionState.value = data || null
+		} catch (error) {
+			if (showError) {
+				message.error('加载 AI 救援建议失败')
+			}
+		} finally {
+			aiSuggestionLoading.value = false
+		}
+	}
+
 	async function refreshLogPanel(showMessage = true) {
 		logLoading.value = true
 		try {
@@ -919,6 +1452,7 @@
 		try {
 			const data = await emergencyDrillApi.getDisasterState()
 			applyScenarioState(data)
+			await loadAiSuggestion(false)
 		} catch (error) {
 			if (!silent) {
 				message.error('加载灾情态势失败')
@@ -935,6 +1469,7 @@
 			])
 			applyScenarioState(stateData)
 			logList.value = Array.isArray(logData) ? logData : []
+			await loadAiSuggestion(false)
 			await recordOperationLog(
 				{
 					operationType: 'DASHBOARD_REFRESH',
@@ -960,6 +1495,7 @@
 			poiList.value = Array.isArray(poiData) ? poiData : []
 			logList.value = Array.isArray(logData) ? logData : []
 			applyScenarioState(stateData)
+			await loadAiSuggestion(false)
 		} catch (error) {
 			message.error('初始化应急大屏失败')
 		} finally {
@@ -983,6 +1519,7 @@
 			if (stateData?.latestSignal) {
 				appendSignal(stateData.latestSignal)
 			}
+			await loadAiSuggestion(false)
 			await loadLogList(true)
 			message.success('受灾半径已更新')
 		} finally {
@@ -993,15 +1530,24 @@
 	async function acceptSuggestion() {
 		const increment = responseLevel.value.key === 'critical' ? 220 : 120
 		radiusDraft.value = Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS) + increment
+		adoptedRescueRouteList.value = aiSuggestionRoutes.value.map((route) => ({
+			...route,
+			pointList: route.pointList.map((point) => ({ ...point }))
+		}))
+		const routeSummary = adoptedRescueRouteList.value.map((item) => item.routeName).join('、')
 		await recordOperationLog(
 			{
 				operationType: 'AI_SUGGESTION_ACCEPT',
 				operationName: '采纳AI建议',
-				detail: `采纳AI建议，已将待更新受灾半径预设为 ${Math.round(Number(radiusDraft.value))} 米。`
+				detail: `采纳AI建议，已将待更新受灾半径预设为 ${Math.round(Number(radiusDraft.value))} 米，并下发 ${adoptedRescueRouteList.value.length} 条救援路线：${routeSummary || '暂无'}。`
 			},
 			{ refreshLogs: true }
 		)
-		message.info(`已采纳 AI 建议，受灾半径待更新为 ${Math.round(Number(radiusDraft.value))} 米`)
+		message.success(
+			adoptedRescueRouteList.value.length
+				? `已采纳 AI 建议，地图已绘制 ${adoptedRescueRouteList.value.length} 条救援路线`
+				: `已采纳 AI 建议，受灾半径待更新为 ${Math.round(Number(radiusDraft.value))} 米`
+		)
 	}
 
 	function startClock() {
@@ -1062,6 +1608,7 @@
 			const data = parseStreamPayload(event)
 			if (data) {
 				applyScenarioState(data)
+				loadAiSuggestion(false)
 			}
 		})
 		streamInstance.addEventListener('signal', async (event) => {
@@ -1085,6 +1632,7 @@
 				leakPointList: mergedLeakPointList
 			}
 			radiusDraft.value = Number(scenarioState.value.radiusMeters || DEFAULT_RADIUS_METERS)
+			await loadState(true)
 			await loadLogList(true)
 		})
 		streamInstance.onerror = () => {
@@ -2203,6 +2751,16 @@
 		box-shadow: 0 0 15px var(--accent);
 	}
 
+	.assistant-message__meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		margin-bottom: 8px;
+		font-size: 11px;
+		color: rgba(214, 227, 255, 0.48);
+	}
+
 	.assistant-message p {
 		margin: 0;
 		font-size: 15px;
@@ -2254,6 +2812,9 @@
 	}
 
 	.footer-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 		height: 42px;
 		padding: 0 18px;
 		border-radius: 8px;
@@ -2551,6 +3112,140 @@
 		color: rgba(214, 227, 255, 0.56);
 	}
 
+	.prompt-panel {
+		display: grid;
+		gap: 16px;
+	}
+
+	.prompt-panel__meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.prompt-panel__meta strong {
+		display: block;
+		font-size: 15px;
+		color: #f3fbff;
+	}
+
+	.prompt-panel__meta p {
+		margin: 4px 0 0;
+		font-size: 12px;
+		color: rgba(214, 227, 255, 0.56);
+	}
+
+	.prompt-card {
+		padding: 16px 18px;
+		border-radius: 14px;
+		background: rgba(8, 20, 38, 0.82);
+		border: 1px solid rgba(122, 218, 255, 0.12);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	}
+
+	.prompt-card h4 {
+		margin: 0 0 12px;
+		font-size: 13px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: #f3fbff;
+	}
+
+	.prompt-card p {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.7;
+		color: rgba(230, 244, 255, 0.84);
+	}
+
+	.prompt-action-list {
+		display: grid;
+		gap: 10px;
+	}
+
+	.prompt-action-item {
+		position: relative;
+		padding-left: 14px;
+		font-size: 13px;
+		line-height: 1.6;
+		color: rgba(230, 244, 255, 0.84);
+	}
+
+	.prompt-action-item::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 8px;
+		width: 6px;
+		height: 6px;
+		border-radius: 999px;
+		background: #00e4ff;
+		box-shadow: 0 0 10px rgba(0, 228, 255, 0.58);
+	}
+
+	.prompt-route-list {
+		display: grid;
+		gap: 12px;
+	}
+
+	.prompt-route-item {
+		padding: 12px 14px;
+		border-radius: 12px;
+		background: linear-gradient(180deg, rgba(12, 28, 52, 0.94), rgba(6, 16, 30, 0.88));
+		border: 1px solid rgba(122, 218, 255, 0.18);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	}
+
+	.prompt-route-item__head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 8px;
+	}
+
+	.prompt-route-item__head strong {
+		font-size: 13px;
+		color: #f3fbff;
+	}
+
+	.prompt-route-item__head span {
+		font-size: 12px;
+		color: var(--route-color);
+		font-weight: 700;
+	}
+
+	.prompt-route-item p {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.6;
+		color: rgba(230, 244, 255, 0.76);
+	}
+
+	.prompt-route-item__path {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px dashed rgba(122, 218, 255, 0.12);
+		font-size: 12px;
+		font-weight: 700;
+		color: #c9f4ff;
+	}
+
+	.prompt-template {
+		margin: 0;
+		padding: 14px 16px;
+		border-radius: 12px;
+		background: rgba(3, 12, 26, 0.84);
+		border: 1px solid rgba(122, 218, 255, 0.12);
+		font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+		font-size: 12px;
+		line-height: 1.7;
+		white-space: pre-wrap;
+		word-break: break-word;
+		color: #bdefff;
+	}
+
 	.custom-scrollbar::-webkit-scrollbar {
 		width: 4px;
 	}
@@ -2730,6 +3425,97 @@
 		.ant-drawer-body::-webkit-scrollbar-thumb {
 			background: rgba(0, 163, 255, 0.28);
 			border-radius: 999px;
+		}
+	}
+
+	.ai-prompt-drawer {
+		.ant-drawer-mask {
+			background: rgba(2, 8, 23, 0.54);
+			backdrop-filter: blur(4px);
+		}
+
+		.ant-drawer-content-wrapper {
+			box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
+		}
+
+		.ant-drawer-content {
+			position: relative;
+			background:
+				radial-gradient(circle at top right, rgba(0, 228, 255, 0.08), transparent 24%),
+				linear-gradient(180deg, rgba(8, 18, 34, 0.98), rgba(4, 12, 26, 0.98));
+			border-right: 1px solid rgba(122, 218, 255, 0.14);
+			color: #d6e3ff;
+		}
+
+		.ant-drawer-content::before {
+			content: '';
+			position: absolute;
+			inset: 0;
+			background:
+				linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 18%),
+				radial-gradient(circle at top left, rgba(0, 163, 255, 0.08), transparent 26%);
+			pointer-events: none;
+		}
+
+		.ant-drawer-header {
+			position: relative;
+			z-index: 1;
+			padding: 18px 20px 16px;
+			background: transparent;
+			border-bottom: 1px solid rgba(122, 218, 255, 0.12);
+		}
+
+		.ant-drawer-header-title {
+			align-items: center;
+		}
+
+		.ant-drawer-title {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			font-size: 15px;
+			font-weight: 700;
+			letter-spacing: 0.08em;
+			color: #f3fbff;
+		}
+
+		.ant-drawer-title::before {
+			content: '';
+			width: 7px;
+			height: 7px;
+			border-radius: 999px;
+			background: #00e4ff;
+			box-shadow: 0 0 12px rgba(0, 228, 255, 0.72);
+			flex: 0 0 auto;
+		}
+
+		.ant-drawer-close {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 32px;
+			height: 32px;
+			margin-inline-end: 0;
+			border: 1px solid rgba(122, 218, 255, 0.16);
+			border-radius: 999px;
+			background: rgba(9, 23, 42, 0.72);
+			color: rgba(214, 227, 255, 0.72);
+			transition: all 0.2s ease;
+		}
+
+		.ant-drawer-close:hover {
+			border-color: rgba(0, 228, 255, 0.3);
+			background: rgba(0, 163, 255, 0.14);
+			color: #ffffff;
+		}
+
+		.ant-drawer-body {
+			position: relative;
+			z-index: 1;
+			padding: 18px 20px 20px;
+			background: transparent;
+			scrollbar-width: thin;
+			scrollbar-color: rgba(0, 163, 255, 0.28) rgba(255, 255, 255, 0.04);
 		}
 	}
 </style>

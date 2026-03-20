@@ -21,6 +21,22 @@
 			<GeojsonLayer id="emergency-flood-ripple" source-id="emergency-flood-zones" map-type="line" :paint="floodRipplePaint" />
 			<GeojsonLayer id="emergency-flood-line" source-id="emergency-flood-zones" map-type="line" :paint="floodLinePaint" />
 
+			<Source id="emergency-rescue-route-lines" :geojson="rescueRouteGeojson" />
+			<GeojsonLayer
+				id="emergency-rescue-route-glow"
+				source-id="emergency-rescue-route-lines"
+				map-type="line"
+				:layout="rescueRouteLineLayout"
+				:paint="rescueRouteGlowPaint"
+			/>
+			<GeojsonLayer
+				id="emergency-rescue-route-line"
+				source-id="emergency-rescue-route-lines"
+				map-type="line"
+				:layout="rescueRouteLineLayout"
+				:paint="rescueRouteLinePaint"
+			/>
+
 			<Source id="emergency-center-point" :geojson="centerPointGeojson" />
 			<GeojsonLayer id="emergency-center-glow" source-id="emergency-center-point" map-type="circle" :paint="centerGlowPaint" />
 			<GeojsonLayer id="emergency-center-core" source-id="emergency-center-point" map-type="circle" :paint="centerCorePaint" />
@@ -29,6 +45,22 @@
 				<div class="center-marker">
 					<div class="center-marker__core"></div>
 					<div class="center-marker__label">灾情中心</div>
+				</div>
+			</Marker>
+
+			<Marker
+				v-for="item in rescueRouteLabelList"
+				:key="item.markerId"
+				:marker-id="item.markerId"
+				:coordinate="[item.lng, item.lat]"
+				:offset="[0, -20]"
+			>
+				<div class="route-marker" :class="`route-marker--${item.pointRole}`" :style="{ '--route-color': item.lineColor }">
+					<div class="route-marker__dot"></div>
+					<div class="route-marker__label">
+						<strong>{{ item.pointName }}</strong>
+						<span>{{ item.routeName }}</span>
+					</div>
 				</div>
 			</Marker>
 
@@ -81,11 +113,11 @@
 		<div class="map-stage__halo"></div>
 		<div class="map-stage__scanline"></div>
 
-		<div class="map-stage__hud">
+		<!-- <div class="map-stage__hud">
 			<span class="map-stage__eyebrow">China City Grid</span>
 			<strong>{{ levelLabel }}</strong>
 			<p>暗色底图 · 后端态势驱动 · 实时灾情半径</p>
-		</div>
+		</div> -->
 
 		<div class="map-stage__stats">
 			<div class="map-stage__stat">
@@ -99,6 +131,10 @@
 			<div class="map-stage__stat">
 				<span>漏水点</span>
 				<strong>{{ displayLeakMarkers.length }}</strong>
+			</div>
+			<div class="map-stage__stat">
+				<span>救援路线</span>
+				<strong>{{ displayRescueRouteList.length }}</strong>
 			</div>
 		</div>
 	</div>
@@ -121,6 +157,11 @@
 	}
 	const FALLBACK_COLOR = '#8ee7ff'
 	const FLOOD_ANIMATION_INTERVAL = 180
+	const FLOOD_COLLISION_PASS_LIMIT = 4
+	const FLOOD_COLLISION_ATTEMPT_LIMIT = 12
+	const FLOOD_COLLISION_CLEARANCE_METERS = 34
+	const FLOOD_POCKET_WAVE_RADIUS_SCALE = 1.28
+	const FLOOD_WAVE_BAND_RADIUS_SCALE = 1.32
 	const FLOOD_DEPTH_COLOR_STOPS = [
 		{ depth: 0.3, fill: '#34d399', line: '#86efac', ripple: '#dcfce7' },
 		{ depth: 0.8, fill: '#10b981', line: '#6ee7b7', ripple: '#a7f3d0' },
@@ -166,6 +207,10 @@
 			default: () => []
 		},
 		leakPointList: {
+			type: Array,
+			default: () => []
+		},
+		rescueRouteList: {
 			type: Array,
 			default: () => []
 		},
@@ -220,6 +265,39 @@
 				lng: Number(item.lng),
 				lat: Number(item.lat)
 			}))
+	)
+	const displayRescueRouteList = computed(() =>
+		props.rescueRouteList
+			.map((item, index) => normalizeRescueRoute(item, index))
+			.filter(Boolean)
+	)
+	const rescueRouteLabelList = computed(() =>
+		displayRescueRouteList.value.flatMap((item) => {
+			const firstPoint = item.pointList[0]
+			const lastPoint = item.pointList[item.pointList.length - 1]
+			return [
+				{
+					markerId: `${item.routeId}-start`,
+					routeId: item.routeId,
+					routeName: item.routeName,
+					lineColor: item.lineColor,
+					pointRole: 'start',
+					pointName: firstPoint.pointName,
+					lng: firstPoint.lng,
+					lat: firstPoint.lat
+				},
+				{
+					markerId: `${item.routeId}-end`,
+					routeId: item.routeId,
+					routeName: item.routeName,
+					lineColor: item.lineColor,
+					pointRole: 'end',
+					pointName: lastPoint.pointName,
+					lng: lastPoint.lng,
+					lat: lastPoint.lat
+				}
+			]
+		})
 	)
 	const latestSignalType = computed(() => props.latestSignal?.signalType || '')
 	const floodAnimationState = computed(() => {
@@ -429,6 +507,10 @@
 		'raster-brightness-min': 0.2,
 		'raster-brightness-max': 0.62
 	}
+	const rescueRouteLineLayout = {
+		'line-cap': 'round',
+		'line-join': 'round'
+	}
 
 	const floodFillPaint = computed(() => {
 		const { fillPulse } = floodAnimationState.value
@@ -491,6 +573,26 @@
 		'circle-stroke-color': '#ef4444',
 		'circle-stroke-width': 2.6
 	}
+	const rescueRouteGlowPaint = computed(() => {
+		const { edgePulse } = floodAnimationState.value
+		return {
+			'line-color': ['case', ['has', 'lineColor'], ['get', 'lineColor'], '#38bdf8'],
+			'line-width': ['interpolate', ['linear'], ['get', 'priorityLevel'], 1, 12.5 + edgePulse * 3.5, 3, 9 + edgePulse * 2.8],
+			'line-opacity': 0.14 + edgePulse * 0.08,
+			'line-offset': ['match', ['get', 'routeType'], 'drainage', -6, 'medical', 0, 'evacuation', 6, 'dispatch', 3, 0],
+			'line-blur': 1.3
+		}
+	})
+	const rescueRouteLinePaint = computed(() => {
+		const { ripplePrimary } = floodAnimationState.value
+		return {
+			'line-color': ['case', ['has', 'lineColor'], ['get', 'lineColor'], '#38bdf8'],
+			'line-width': ['interpolate', ['linear'], ['get', 'priorityLevel'], 1, 5.8, 3, 4.2],
+			'line-opacity': 0.94,
+			'line-offset': ['match', ['get', 'routeType'], 'drainage', -6, 'medical', 0, 'evacuation', 6, 'dispatch', 3, 0],
+			'line-dasharray': [1.1, 0.95 + ripplePrimary * 0.7]
+		}
+	})
 
 	let floodAnimationTimer = null
 
@@ -510,7 +612,8 @@
 		const focusRadiusMeters = clamp(safeRadiusMeters.value * 0.68, 320, 980)
 		const focusPoiList = props.affectedPoiList.length ? displayInfrastructureBoundsList.value : priorityInfrastructureDisplayList.value
 		const pointList = collectBoundsPoints(centerCoordinate.value[0], centerCoordinate.value[1], focusRadiusMeters, focusPoiList).concat(
-			typeof collectFloodDescriptorBoundsPoints === 'function' ? collectFloodDescriptorBoundsPoints(floodPocketDescriptors.value) : []
+			typeof collectFloodDescriptorBoundsPoints === 'function' ? collectFloodDescriptorBoundsPoints(floodPocketDescriptors.value) : [],
+			collectGeojsonCoordinatePoints(rescueRouteGeojson.value)
 		)
 		const lngList = pointList.map((item) => item[0])
 		const latList = pointList.map((item) => item[1])
@@ -587,12 +690,193 @@
 		})
 		return createFeatureCollection(featureList)
 	})
+	const rescueRouteGeojson = computed(() =>
+		createFeatureCollection(displayRescueRouteList.value.map((item) => createRescueRouteFeature(item)).filter(Boolean))
+	)
 
 	function createFeatureCollection(features) {
 		return {
 			type: 'FeatureCollection',
 			features: Array.isArray(features) ? features : EMPTY_COLLECTION.features
 		}
+	}
+
+	function normalizeRescueRoute(item, index) {
+		const pointList = (Array.isArray(item?.pointList) ? item.pointList : [])
+			.filter((point) => isValidCoordinate(point?.lng, point?.lat))
+			.map((point, pointIndex, list) => ({
+				pointName: point.pointName || `节点${pointIndex + 1}`,
+				pointRole: point.pointRole || (pointIndex === 0 ? 'start' : pointIndex === list.length - 1 ? 'end' : 'via'),
+				lng: Number(point.lng),
+				lat: Number(point.lat)
+			}))
+		if (pointList.length < 2) {
+			return null
+		}
+		return {
+			routeId: item.routeId || `route-${index + 1}`,
+			routeName: item.routeName || `救援路线${index + 1}`,
+			routeType: item.routeType || 'dispatch',
+			description: item.description || 'AI 规划路线',
+			priorityLevel: Number(item.priorityLevel || index + 1),
+			lineColor: item.lineColor || '#38bdf8',
+			estimatedMinutes: Math.max(Number(item.estimatedMinutes || 0), 1),
+			pointList,
+			displayPointList: buildRescueRouteDisplayPointList(pointList, item.routeType || 'dispatch', Number(item.priorityLevel || index + 1))
+		}
+	}
+
+	function createRescueRouteFeature(item) {
+		const pointList = Array.isArray(item?.displayPointList) && item.displayPointList.length >= 2 ? item.displayPointList : item?.pointList
+		if (!pointList?.length || pointList.length < 2) {
+			return null
+		}
+		return {
+			type: 'Feature',
+			properties: {
+				routeId: item.routeId,
+				routeName: item.routeName,
+				routeType: item.routeType,
+				priorityLevel: item.priorityLevel,
+				lineColor: item.lineColor
+			},
+			geometry: {
+				type: 'LineString',
+				coordinates: pointList.map((point) => [Number(point.lng), Number(point.lat)])
+			}
+		}
+	}
+
+	function buildRescueRouteDisplayPointList(pointList, routeType = 'dispatch', priorityLevel = 1) {
+		const safePointList = (Array.isArray(pointList) ? pointList : [])
+			.filter((item) => isValidCoordinate(item?.lng, item?.lat))
+			.map((item) => ({
+				...item,
+				lng: Number(item.lng),
+				lat: Number(item.lat)
+			}))
+		if (safePointList.length < 2) {
+			return safePointList
+		}
+
+		const startPoint = safePointList[0]
+		const endPoint = safePointList[safePointList.length - 1]
+		const totalDistanceMeters = calculateDistanceMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
+		if (totalDistanceMeters < 160) {
+			return safePointList
+		}
+
+		const routeOffsetMeters = resolveRouteOffsetMeters(routeType, priorityLevel, totalDistanceMeters)
+		const displayPointList = [startPoint]
+		const startShoulder = buildRouteShoulderPoint(startPoint, endPoint, 0.2, routeOffsetMeters * 0.48, routeType, priorityLevel)
+		if (startShoulder) {
+			displayPointList.push(startShoulder)
+		}
+
+		const intermediatePointList = safePointList.slice(1, -1)
+		if (intermediatePointList.length) {
+			intermediatePointList.forEach((item, index) => {
+				const ratio = (index + 1) / (intermediatePointList.length + 1)
+				displayPointList.push(
+					offsetRoutePoint(item, startPoint, endPoint, routeOffsetMeters * (0.92 - ratio * 0.18), routeType, priorityLevel)
+				)
+			})
+		} else {
+			const middleAnchor = buildRouteShoulderPoint(startPoint, endPoint, 0.5, routeOffsetMeters, routeType, priorityLevel)
+			if (middleAnchor) {
+				displayPointList.push(middleAnchor)
+			}
+		}
+
+		const endShoulder = buildRouteShoulderPoint(startPoint, endPoint, 0.8, routeOffsetMeters * 0.32, routeType, priorityLevel)
+		if (endShoulder) {
+			displayPointList.push(endShoulder)
+		}
+		displayPointList.push(endPoint)
+
+		return dedupeRoutePointList(displayPointList)
+	}
+
+	function resolveRouteOffsetMeters(routeType, priorityLevel, totalDistanceMeters) {
+		const baseOffsetMap = {
+			drainage: 110,
+			medical: 162,
+			evacuation: 206,
+			dispatch: 138
+		}
+		const baseOffset = baseOffsetMap[routeType] || 132
+		const priorityBoost = Math.max(Number(priorityLevel || 1) - 1, 0) * 18
+		return Math.min(baseOffset + priorityBoost, Math.max(totalDistanceMeters * 0.28, 110))
+	}
+
+	function buildRouteShoulderPoint(startPoint, endPoint, ratio, offsetMeters, routeType, priorityLevel) {
+		const deltaMeters = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
+		const vectorLength = Math.sqrt(deltaMeters.eastMeters * deltaMeters.eastMeters + deltaMeters.northMeters * deltaMeters.northMeters)
+		if (vectorLength < 1) {
+			return null
+		}
+		const anchorLng = Number(startPoint.lng) + (Number(endPoint.lng) - Number(startPoint.lng)) * Number(ratio)
+		const anchorLat = Number(startPoint.lat) + (Number(endPoint.lat) - Number(startPoint.lat)) * Number(ratio)
+		const normalMeta = resolveRouteNormal(deltaMeters.eastMeters, deltaMeters.northMeters, offsetMeters, routeType, priorityLevel)
+		return {
+			pointName: '路径引导点',
+			pointRole: 'guide',
+			lng: offsetLng(anchorLng, anchorLat, normalMeta.eastOffsetMeters),
+			lat: offsetLat(anchorLat, normalMeta.northOffsetMeters)
+		}
+	}
+
+	function offsetRoutePoint(point, startPoint, endPoint, offsetMeters, routeType, priorityLevel) {
+		const deltaMeters = calculateEastNorthDeltaMeters(startPoint.lng, startPoint.lat, endPoint.lng, endPoint.lat)
+		const normalMeta = resolveRouteNormal(deltaMeters.eastMeters, deltaMeters.northMeters, offsetMeters, routeType, priorityLevel)
+		return {
+			...point,
+			lng: offsetLng(point.lng, point.lat, normalMeta.eastOffsetMeters),
+			lat: offsetLat(point.lat, normalMeta.northOffsetMeters)
+		}
+	}
+
+	function resolveRouteNormal(eastMeters, northMeters, offsetMeters, routeType, priorityLevel) {
+		const vectorLength = Math.sqrt(Number(eastMeters) * Number(eastMeters) + Number(northMeters) * Number(northMeters))
+		if (vectorLength < 1) {
+			return {
+				eastOffsetMeters: 0,
+				northOffsetMeters: 0
+			}
+		}
+		const directionMap = {
+			drainage: -1,
+			medical: 1,
+			evacuation: 1,
+			dispatch: Number(priorityLevel) % 2 === 0 ? -1 : 1
+		}
+		const direction = directionMap[routeType] || 1
+		const routeScaleMap = {
+			drainage: 0.82,
+			medical: 1,
+			evacuation: 1.16,
+			dispatch: 0.9
+		}
+		const finalOffset = Number(offsetMeters) * (routeScaleMap[routeType] || 1) * direction
+		return {
+			eastOffsetMeters: (-Number(northMeters) / vectorLength) * finalOffset,
+			northOffsetMeters: (Number(eastMeters) / vectorLength) * finalOffset
+		}
+	}
+
+	function dedupeRoutePointList(pointList) {
+		return pointList.reduce((result, item) => {
+			const previousPoint = result[result.length - 1]
+			if (!previousPoint) {
+				result.push(item)
+				return result
+			}
+			const distanceMeters = calculateDistanceMeters(previousPoint.lng, previousPoint.lat, item.lng, item.lat)
+			if (distanceMeters >= 12) {
+				result.push(item)
+			}
+			return result
+		}, [])
 	}
 
 	function resolveNonOverlappingFloodDescriptors(descriptorList, fallbackCenter) {
@@ -614,9 +898,29 @@
 
 		prioritizedList.forEach((item, index) => {
 			let adjustedItem = { ...item }
-			placedDescriptorList.forEach((placedItem, placedIndex) => {
-				adjustedItem = separateFloodDescriptor(adjustedItem, placedItem, normalizedFallbackCenter, index + placedIndex)
-			})
+			for (let pass = 0; pass < FLOOD_COLLISION_PASS_LIMIT; pass += 1) {
+				let hasCollision = false
+				placedDescriptorList.forEach((placedItem, placedIndex) => {
+					const collisionMeta = measureFloodDescriptorCollision(
+						placedItem,
+						adjustedItem,
+						normalizedFallbackCenter,
+						index + placedIndex + pass * Math.max(placedDescriptorList.length, 1)
+					)
+					if (collisionMeta.hasCollision) {
+						hasCollision = true
+					}
+					adjustedItem = separateFloodDescriptor(
+						adjustedItem,
+						placedItem,
+						normalizedFallbackCenter,
+						index + placedIndex + pass * Math.max(placedDescriptorList.length, 1)
+					)
+				})
+				if (!hasCollision || !hasFloodDescriptorCollision(adjustedItem, placedDescriptorList, normalizedFallbackCenter, index + pass)) {
+					break
+				}
+			}
 			placedDescriptorList.push(adjustedItem)
 		})
 
@@ -637,7 +941,7 @@
 
 	function separateFloodDescriptor(currentDescriptor, placedDescriptor, fallbackCenter, seed) {
 		let adjustedDescriptor = { ...currentDescriptor }
-		for (let attempt = 0; attempt < 8; attempt += 1) {
+		for (let attempt = 0; attempt < FLOOD_COLLISION_ATTEMPT_LIMIT; attempt += 1) {
 			const collisionMeta = measureFloodDescriptorCollision(placedDescriptor, adjustedDescriptor, fallbackCenter, seed + attempt)
 			if (!collisionMeta.hasCollision) {
 				return adjustedDescriptor
@@ -657,7 +961,7 @@
 				return adjustedDescriptor
 			}
 
-			const moveDistanceMeters = remainingCollisionMeta.overlapMeters + 20
+			const moveDistanceMeters = remainingCollisionMeta.overlapMeters + FLOOD_COLLISION_CLEARANCE_METERS
 			adjustedDescriptor.centerLng = offsetLng(
 				adjustedDescriptor.centerLng,
 				adjustedDescriptor.centerLat,
@@ -669,6 +973,12 @@
 			)
 		}
 		return adjustedDescriptor
+	}
+
+	function hasFloodDescriptorCollision(descriptor, descriptorList, fallbackCenter, seed) {
+		return (Array.isArray(descriptorList) ? descriptorList : []).some((item, index) =>
+			measureFloodDescriptorCollision(item, descriptor, fallbackCenter, seed + index).hasCollision
+		)
 	}
 
 	function measureFloodDescriptorCollision(placedDescriptor, currentDescriptor, fallbackCenter, seed) {
@@ -711,7 +1021,7 @@
 		const requiredDistanceMeters =
 			calculateFloodDescriptorCollisionRadius(placedDescriptor, angleFromPlaced) +
 			calculateFloodDescriptorCollisionRadius(currentDescriptor, angleFromCurrent) +
-			18
+			FLOOD_COLLISION_CLEARANCE_METERS
 		return {
 			hasCollision: distanceMeters < requiredDistanceMeters,
 			overlapMeters: Math.max(requiredDistanceMeters - distanceMeters, 0),
@@ -727,7 +1037,13 @@
 			Number(descriptor.rotation || 0),
 			directionRadians
 		)
-		return directionalRadius * (1.14 + Number(descriptor.pulseScale || 0) * 0.65)
+		return directionalRadius * resolveFloodDescriptorEnvelopeScale(descriptor)
+	}
+
+	function resolveFloodDescriptorEnvelopeScale(descriptor) {
+		const pulseScale = Math.max(Number(descriptor?.pulseScale || 0), 0)
+		const zoneSafetyScale = descriptor?.zone === 'primary' ? 1.08 : descriptor?.zone === 'leak' ? 1.04 : 1.02
+		return FLOOD_POCKET_WAVE_RADIUS_SCALE * FLOOD_WAVE_BAND_RADIUS_SCALE * (1 + pulseScale) * zoneSafetyScale
 	}
 
 	function calculateDirectionalEllipseRadius(radiusX, radiusY, rotationDeg, directionRadians) {
@@ -1015,7 +1331,8 @@
 			if (!isValidCoordinate(item?.centerLng, item?.centerLat)) {
 				return
 			}
-			const boundRadiusMeters = Math.max(Number(item.radiusX || 0), Number(item.radiusY || 0)) * 1.18
+			const boundRadiusMeters =
+				Math.max(Number(item.radiusX || 0), Number(item.radiusY || 0)) * resolveFloodDescriptorEnvelopeScale(item)
 			pointList.push([Number(item.centerLng), Number(item.centerLat)])
 			pointList.push([offsetLng(item.centerLng, item.centerLat, boundRadiusMeters), Number(item.centerLat)])
 			pointList.push([offsetLng(item.centerLng, item.centerLat, -boundRadiusMeters), Number(item.centerLat)])
@@ -1160,7 +1477,7 @@
 		z-index: 4;
 		display: grid;
 		gap: 10px;
-		width: 148px;
+		width: 156px;
 	}
 
 	.map-stage__stat {
@@ -1230,6 +1547,59 @@
 		white-space: nowrap;
 		box-shadow: 0 0 16px rgba(239, 68, 68, 0.26);
 		animation: centerMarkerLabelBlink 1.2s steps(2, end) infinite;
+	}
+
+	.route-marker {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 10px 6px 8px;
+		border-radius: 12px;
+		background: rgba(5, 17, 32, 0.9);
+		border: 1px solid var(--route-color);
+		box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24), 0 0 14px rgba(255, 255, 255, 0.04);
+		white-space: nowrap;
+	}
+
+	.route-marker__dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--route-color);
+		box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08), 0 0 10px var(--route-color);
+	}
+
+	.route-marker__label {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.route-marker__label strong {
+		max-width: 126px;
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1.2;
+		color: #f3fbff;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.route-marker__label span {
+		font-size: 10px;
+		line-height: 1.2;
+		color: rgba(214, 227, 255, 0.66);
+	}
+
+	.route-marker--start .route-marker__label span::before {
+		content: '起点 · ';
+		color: var(--route-color);
+	}
+
+	.route-marker--end .route-marker__label span::before {
+		content: '终点 · ';
+		color: var(--route-color);
 	}
 
 	.leak-marker {

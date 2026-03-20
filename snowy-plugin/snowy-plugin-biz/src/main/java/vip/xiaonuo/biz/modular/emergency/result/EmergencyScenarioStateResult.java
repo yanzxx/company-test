@@ -28,17 +28,25 @@ public class EmergencyScenarioStateResult {
     @ApiModelProperty(value = "当前灾情半径，单位米")
     private Double radiusMeters;
 
-    /** 总POI数 */
-    @ApiModelProperty(value = "模拟POI总数")
+    /** 总设施数 */
+    @ApiModelProperty(value = "应急设施总数")
     private Integer totalPoiCount;
 
-    /** 当前影响POI数量 */
-    @ApiModelProperty(value = "当前影响POI数量")
+    /** 当前影响设施数量 */
+    @ApiModelProperty(value = "当前影响设施数量")
     private Integer poiCountInRange;
 
-    /** 当前影响POI列表 */
-    @ApiModelProperty(value = "当前影响POI列表")
+    /** 当前影响设施列表 */
+    @ApiModelProperty(value = "当前影响设施列表")
     private List<EmergencyPoiResult> affectedPoiList;
+
+    /** 总设施类型统计 */
+    @ApiModelProperty(value = "总设施类型统计")
+    private List<EmergencyFacilityStatResult> totalFacilityStats;
+
+    /** 当前受灾设施类型统计 */
+    @ApiModelProperty(value = "当前受灾设施类型统计")
+    private List<EmergencyFacilityStatResult> affectedFacilityStats;
 
     /** 累计信号数 */
     @ApiModelProperty(value = "累计推送信号数")

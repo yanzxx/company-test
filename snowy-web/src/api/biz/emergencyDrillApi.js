@@ -21,6 +21,10 @@ export default {
 	getDisasterState(data) {
 		return request('disaster/state', data, 'get')
 	},
+	// 获取AI救援方案建议
+	getAiSuggestion(data) {
+		return request('ai/suggestion', data, 'get')
+	},
 	// 更新受灾半径
 	updateRadius(data) {
 		return request('disaster/updateRadius', data)
